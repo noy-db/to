@@ -1,0 +1,37 @@
+{
+  "name": "noy-db-to",
+  "version": "0.7.0-pre.1",
+  "private": true,
+  "description": "Extended storage adapters for noy-db — the non-essential to-* family (cloud, server, remote-fs), bound to the published @noy-db/hub/to seam.",
+  "license": "MIT",
+  "author": "vLannaAi <vicio@lanna.ai>",
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck && tsc -p scripts/tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.18.0",
+    "semver": "^7.6.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.21.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noy-db/to.git"
+  },
+  "bugs": {
+    "url": "https://github.com/noy-db/to/issues"
+  },
+  "homepage": "https://github.com/noy-db/to#readme"
+}

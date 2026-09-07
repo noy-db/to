@@ -1,0 +1,61 @@
+{
+  "name": "@noy-db/to-rest",
+  "version": "0.7.0-pre.1",
+  "description": "REST/HTTP adapter for noy-db — NoydbStore client for the @noy-db/in-rest ciphertext RPC proxy (POST /rpc). The HTTP mirror of by-peer's peerStore(); the server never sees a secret or plaintext.",
+  "license": "MIT",
+  "author": "vLannaAi <vicio@lanna.ai>",
+  "homepage": "https://github.com/noy-db/to/tree/main/to-rest#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noy-db/to.git",
+    "directory": "to-rest"
+  },
+  "bugs": {
+    "url": "https://github.com/noy-db/to/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0"
+  },
+  "devDependencies": {
+    "@noy-db/hub": "0.7.0-pre.2",
+    "@noy-db/in-rest": "0.7.0-pre.2",
+    "@types/node": "^22.0.0",
+    "@noy-db/test-adapter-conformance": "0.7.0-pre.2"
+  },
+  "keywords": [
+    "noy-db",
+    "to-rest",
+    "rest",
+    "http",
+    "rpc",
+    "storage"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "latest"
+  }
+}

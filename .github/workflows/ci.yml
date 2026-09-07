@@ -1,0 +1,12 @@
+# Thin caller. The workflow itself lives once, in noy-db/.github.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    uses: noy-db/.github/.github/workflows/ci.yml@v1
+    secrets: inherit

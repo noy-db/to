@@ -1,0 +1,14 @@
+# Thin caller. Copied only into repos whose family.config.json has publishes: true.
+name: snapshot
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+
+jobs:
+  snapshot:
+    uses: noy-db/.github/.github/workflows/snapshot.yml@v1
+    permissions:
+      contents: read
+      packages: write

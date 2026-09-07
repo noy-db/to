@@ -1,0 +1,6 @@
+{
+  "name": "@noy-db/to-bad",
+  "version": "0.2.0-pre.0",
+  "dependencies": { "crypto-js": "^4.0.0" },
+  "peerDependencies": { "@noy-db/hub": "workspace:*" }
+}

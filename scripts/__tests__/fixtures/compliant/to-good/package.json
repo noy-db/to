@@ -1,0 +1,5 @@
+{
+  "name": "@noy-db/to-good",
+  "version": "0.2.0-pre.0",
+  "peerDependencies": { "@noy-db/hub": "^0.2.0-pre.31" }
+}

@@ -1,0 +1,11 @@
+# Thin caller. Replaces each repo's own peer-floor workflow.
+name: peer-floor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  peer-floor:
+    uses: noy-db/.github/.github/workflows/peer-floor.yml@v1

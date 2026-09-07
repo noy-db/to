@@ -1,0 +1,61 @@
+{
+  "name": "@noy-db/to-icloud",
+  "version": "0.7.0-pre.1",
+  "description": "iCloud Drive bundle store for noy-db — macOS-aware persistence that handles both eviction shapes (modern dataless-in-place and legacy .icloud stubs) and detects conflict files automatically. Treats each vault as a single .noydb bundle, safe for the Apple ecosystem.",
+  "license": "MIT",
+  "author": "vLannaAi <vicio@lanna.ai>",
+  "homepage": "https://github.com/noy-db/to/tree/main/to-icloud#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noy-db/to.git",
+    "directory": "to-icloud"
+  },
+  "bugs": {
+    "url": "https://github.com/noy-db/to/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@noy-db/hub": "^0.6.0-pre.11 || ^0.7.0-pre.0 || ^0.7.1-pre.0"
+  },
+  "devDependencies": {
+    "@noy-db/hub": "0.7.0-pre.2",
+    "@types/node": "^22.0.0",
+    "@noy-db/test-adapter-conformance": "0.7.0-pre.2"
+  },
+  "keywords": [
+    "noy-db",
+    "to-icloud",
+    "icloud",
+    "apple",
+    "macos",
+    "bundle",
+    "storage"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "latest"
+  }
+}
