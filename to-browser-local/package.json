@@ -1,8 +1,8 @@
 {
   "name": "@noy-db/to-browser-local",
-  "version": "0.7.0-pre.1",
+  "version": "0.8.0-pre.0",
   "description": "localStorage adapter for noy-db with optional key obfuscation",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
   "homepage": "https://github.com/noy-db/to/tree/main/to-browser-local#readme",
   "repository": {
@@ -26,7 +26,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=22.0.0"
@@ -38,11 +39,11 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0"
+    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0"
   },
   "devDependencies": {
-    "@noy-db/hub": "0.7.0-pre.2",
-    "@noy-db/test-adapter-conformance": "0.7.0-pre.2",
+    "@noy-db/hub": "0.8.0-pre.0",
+    "@noy-db/test-adapter-conformance": "0.8.0-pre.0",
     "happy-dom": "^18.0.0"
   },
   "keywords": [

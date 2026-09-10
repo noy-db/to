@@ -1,0 +1,17 @@
+# templates/release-caller.yml — copy to <member>/.github/workflows/release.yml
+# Fires ONLY when a human publishes a GitHub Release. The tag IS the version.
+name: Release
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+  id-token: write
+  # verify reads snapshot.yml's runs; a reusable workflow's token is capped by
+  # its caller's grants, so this is needed here too, not only in .github.
+  actions: read
+jobs:
+  release:
+    uses: noy-db/.github/.github/workflows/release.yml@v1
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

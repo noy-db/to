@@ -1,8 +1,8 @@
 {
   "name": "@noy-db/to-cloudflare-d1",
-  "version": "0.7.0-pre.1",
+  "version": "0.8.0-pre.0",
   "description": "Cloudflare D1 adapter for noy-db — SQLite at the edge, running inside Cloudflare Workers. Accepts a D1Database binding and speaks the noy-db store contract via D1's prepare/bind API.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
   "homepage": "https://github.com/noy-db/to/tree/main/to-cloudflare-d1#readme",
   "repository": {
@@ -26,7 +26,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=22.0.0"
@@ -38,12 +39,12 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0"
+    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0"
   },
   "devDependencies": {
-    "@noy-db/hub": "0.7.0-pre.2",
+    "@noy-db/hub": "0.8.0-pre.0",
     "@types/node": "^22.0.0",
-    "@noy-db/test-adapter-conformance": "0.7.0-pre.2"
+    "@noy-db/test-adapter-conformance": "0.8.0-pre.0"
   },
   "keywords": [
     "noy-db",

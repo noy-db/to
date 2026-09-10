@@ -1,5 +1,22 @@
 # @noy-db/to-sqlite
 
+## 0.8.0-pre.0
+
+Relicensed from MIT to Apache-2.0 from this version on. Earlier versions remain MIT.
+
+Binds `@noy-db/hub@0.8.0-pre.0`.
+
+### Compatibility
+
+- Peer range on `@noy-db/hub` **widened by appending** `|| ^0.8.0-pre.0`. Every range
+  admitted before is still admitted; nothing compels an upgrade.
+- The suite runs against the **published** `@noy-db/hub@0.8.0-pre.0` and
+  `@noy-db/test-adapter-conformance@0.8.0-pre.0` — the whole `@noy-db/*` dev-pin line
+  moved as a unit.
+
+### Licensing
+
+- `LICENSE` (Apache-2.0) and `NOTICE` now ship in the tarball; both are listed in `files`.
 
 ## 0.7.0-pre.0
 

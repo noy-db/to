@@ -1,9 +1,9 @@
 {
   "name": "noy-db-to",
-  "version": "0.7.0-pre.1",
+  "version": "0.8.0-pre.0",
   "private": true,
   "description": "Extended storage adapters for noy-db — the non-essential to-* family (cloud, server, remote-fs), bound to the published @noy-db/hub/to seam.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
