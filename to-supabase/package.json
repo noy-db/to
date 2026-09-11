@@ -1,8 +1,8 @@
 {
   "name": "@noy-db/to-supabase",
-  "version": "0.7.0-pre.1",
+  "version": "0.8.0-pre.0",
   "description": "Supabase adapter for noy-db — Postgres + Storage combo. Routes records to @noy-db/to-postgres via the Supabase Postgres pool and optional blob routing via Supabase Storage.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
   "homepage": "https://github.com/noy-db/to/tree/main/to-supabase#readme",
   "repository": {
@@ -26,7 +26,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=22.0.0"
@@ -38,14 +39,14 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0",
+    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0",
     "@noy-db/to-postgres": "workspace:*"
   },
   "devDependencies": {
-    "@noy-db/hub": "0.7.0-pre.2",
+    "@noy-db/hub": "0.8.0-pre.0",
     "@noy-db/to-postgres": "workspace:*",
     "@types/node": "^22.0.0",
-    "@noy-db/test-adapter-conformance": "0.7.0-pre.2"
+    "@noy-db/test-adapter-conformance": "0.8.0-pre.0"
   },
   "keywords": [
     "noy-db",

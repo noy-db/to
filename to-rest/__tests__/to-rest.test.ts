@@ -22,21 +22,30 @@ describe('to-rest — RPC client (#55)', () => {
     expect(await store.get('v', 'c', 'a')).toBeNull()
   })
 
-  it('re-hydrates ConflictError from a 409 envelope with the server version', async () => {
+  // The LIVE-handler witness of the post-#1218 409 contract. Measured on
+  // the hub 0.7 → 0.8 hop: `@noy-db/in-rest@0.7.0-pre.2` emitted
+  // `{ name, message, version: err.version }`; `0.8.0-pre.0` emits
+  // `{ name, message }`. So CAS semantics still survive the wire hop, but
+  // the server no longer discloses the stored version — the client must
+  // produce a ConflictError with `NaN`, never a fabricated number. Until
+  // this hop the assertion here was `version === 3`; the three hand-rolled
+  // cases below pinned this payload before any server could emit it.
+  it('re-hydrates ConflictError from a 409 envelope that no longer carries the version', async () => {
     const { fetch } = restHarness()
     const store = toRest({ baseUrl: 'https://vault.example.com', headers: auth, fetch })
     await store.put('v', 'c', 'a', env(3))
     const err = await store.put('v', 'c', 'a', env(9), 1).catch(e => e as Error)
     expect(err).toBeInstanceOf(ConflictError)
-    expect((err as ConflictError).version).toBe(3)
+    expect((err as ConflictError).version).toBeNaN()
   })
 
-  // #114 — noy-db #1218 will drop `version` from in-rest's 409 body (it
-  // discloses another writer's progress counter). These cases pin the
-  // FUTURE payload, so this client keeps producing a ConflictError once
-  // the field is gone. They cannot use `restHarness`: it serves a live
-  // `createRestHandler`, which always emits `version` — no published
-  // in-rest can produce this body yet, so the 409 is hand-rolled.
+  // #114 — noy-db #1218 dropped `version` from in-rest's 409 body (it
+  // discloses another writer's progress counter). LANDED in the 0.8 line;
+  // these cases were written against the FUTURE payload and needed no edit
+  // when it arrived, which is the whole point of having written them.
+  // They stay hand-rolled rather than folding into `restHarness`: a live
+  // `createRestHandler` cannot produce a `version: null` body at all, and
+  // the negative control needs a name the real server never emits.
   // Mirrors hub's `isConflictError` — the predicate every store-boundary
   // catch is required to use (hub #935: `instanceof` is unreliable across
   // this seam).
