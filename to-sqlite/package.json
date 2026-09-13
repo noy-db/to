@@ -1,6 +1,6 @@
 {
   "name": "@noy-db/to-sqlite",
-  "version": "0.8.0-pre.0",
+  "version": "0.8.0",
   "description": "SQLite adapter for noy-db — single-file local encrypted document store. Works with better-sqlite3, node:sqlite (Node 22+), or bun:sqlite via a duck-typed Database interface. casAtomic: true (BEGIN IMMEDIATE + UPDATE WHERE _v=?).",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
@@ -42,9 +42,9 @@
     "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0"
   },
   "devDependencies": {
-    "@noy-db/hub": "0.8.0-pre.0",
+    "@noy-db/hub": "0.8.0",
     "@types/node": "^22.0.0",
-    "@noy-db/test-adapter-conformance": "0.8.0-pre.0"
+    "@noy-db/test-adapter-conformance": "0.8.0"
   },
   "keywords": [
     "noy-db",

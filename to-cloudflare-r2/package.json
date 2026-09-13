@@ -1,6 +1,6 @@
 {
   "name": "@noy-db/to-cloudflare-r2",
-  "version": "0.8.0-pre.0",
+  "version": "0.8.0",
   "description": "Cloudflare R2 adapter for noy-db — S3-compatible object storage with zero egress fees. Thin wrapper around @noy-db/to-aws-s3 configured for the R2 endpoint. casAtomic: true, serverWriteTime: true.",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
@@ -45,10 +45,10 @@
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
-    "@noy-db/hub": "0.8.0-pre.0",
+    "@noy-db/hub": "0.8.0",
     "@noy-db/to-aws-s3": "workspace:*",
     "@types/node": "^22.0.0",
-    "@noy-db/test-adapter-conformance": "0.8.0-pre.0"
+    "@noy-db/test-adapter-conformance": "0.8.0"
   },
   "keywords": [
     "noy-db",
