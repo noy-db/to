@@ -40,7 +40,7 @@
   },
   "peerDependencies": {
     "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0",
-    "@noy-db/to-postgres": "workspace:*"
+    "@noy-db/to-postgres": "workspace:^"
   },
   "devDependencies": {
     "@noy-db/hub": "0.8.0-pre.0",

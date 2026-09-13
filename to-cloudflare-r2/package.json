@@ -41,7 +41,7 @@
   "peerDependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
     "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0",
-    "@noy-db/to-aws-s3": "workspace:*"
+    "@noy-db/to-aws-s3": "workspace:^"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
