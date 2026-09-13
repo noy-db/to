@@ -1,0 +1,26 @@
+# ⭐ THIS IS THE OTHER HALF OF THE CI TRIM (2026-09-13). The per-push run was
+# narrowed to a single Node major to keep the develop-and-bounce loop fast while
+# `@dev` is the family's only release surface. That trade is only honest if the
+# wider matrix still runs somewhere.
+#
+# ⛔ A repo that trims the push matrix and does NOT adopt this caller has simply
+# stopped testing Node 24. That is a decision someone may make, but it must be
+# made out loud — not arrived at by copying half a change.
+#
+# Runs at 03:17 UTC: off the hour, because scheduled jobs bunch on :00 and
+# GitHub delays them under load. Nothing here publishes or tags.
+name: nightly
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  # Kept so the matrix can be exercised on demand before a cut, rather than
+  # waiting a day to learn whether the wider matrix still passes.
+  workflow_dispatch: {}
+
+jobs:
+  ci:
+    uses: noy-db/.github/.github/workflows/ci.yml@v1
+    with:
+      node-matrix: '["22","24"]'
+    secrets: inherit
