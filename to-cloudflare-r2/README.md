@@ -41,4 +41,4 @@ See the [main repository](https://github.com/noy-db/core#readme) for setup, exam
 
 ## License
 
-[MIT](./LICENSE) © vLannaAi
+[Apache-2.0](./LICENSE) © vLannaAi

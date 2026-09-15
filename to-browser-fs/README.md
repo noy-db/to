@@ -149,4 +149,4 @@ and passed as a binding.
 
 ## License
 
-MIT
+Apache-2.0

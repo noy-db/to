@@ -111,4 +111,4 @@ Credentials arrive at `resolve()` time and are never serialized onto a store des
 
 ## License
 
-MIT © vLannaAi — see the [noy-db repo](https://github.com/noy-db/core) for full documentation.
+Apache-2.0 © vLannaAi — see the [noy-db repo](https://github.com/noy-db/core) for full documentation.
