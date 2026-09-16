@@ -1,5 +1,10 @@
 # Changelog — to-browser-local
 
+## 0.8.0
+
+Lockstep bump to 0.8.0; no package-level change in this release. See `@noy-db/hub` 0.8.0 for
+the line's notes.
+
 ## 0.8.0-pre.0
 
 Relicensed from MIT to Apache-2.0 from this version on. Earlier versions remain MIT.

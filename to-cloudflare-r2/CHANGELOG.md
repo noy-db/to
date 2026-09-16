@@ -1,5 +1,17 @@
 # @noy-db/to-cloudflare-r2
 
+## 0.8.0
+
+Lockstep bump to 0.8.0. No source change in this release — see `@noy-db/hub` 0.8.0 for the
+line's notes.
+
+### Fixed
+
+- The published peer range on `@noy-db/to-aws-s3` is now `^0.8.0`. At 0.8.0-pre.0 the manifest
+  carried `workspace:*`, which publishes as an **exact** version, so an installer of
+  `@noy-db/to-cloudflare-r2@0.8.0-pre.0` was pinned to `@noy-db/to-aws-s3@0.8.0-pre.0`
+  exactly. Source is unchanged; what changed is what a consumer resolves.
+
 ## 0.8.0-pre.0
 
 Relicensed from MIT to Apache-2.0 from this version on. Earlier versions remain MIT.
