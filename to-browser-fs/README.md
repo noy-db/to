@@ -149,4 +149,4 @@ and passed as a binding.
 
 ## License
 
-Apache-2.0
+Apache-2.0 © vLannaAi
