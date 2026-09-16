@@ -11,6 +11,13 @@ has mounted the volume, the protocol stops mattering — it is just a directory.
 That makes the LAN tier buildable with no port to open, no daemon, no NAS configuration,
 and no vendor: a Windows workstation shares a folder, everyone else mounts it.
 
+<!-- prose-preamble
+import type { BrowserFsStore } from '@noy-db/to-browser-fs'
+declare const store: BrowserFsStore
+declare const password: string
+declare function unlockVault(password: string): Promise<void>
+-->
+
 ```ts
 import { createNoydb } from '@noy-db/hub'
 import { toBrowserIdb } from '@noy-db/to-browser-idb'
@@ -22,6 +29,7 @@ await rememberDirectory('lan-share', handle)
 const db = await createNoydb({
   store: toBrowserIdb({ prefix: 'vault' }),                        // authoritative for writes
   sync: [{ store: toBrowserFs({ handle }), role: 'sync-peer', label: 'LAN' }],
+  user: 'alice',
 })
 ```
 
@@ -55,10 +63,12 @@ the gesture first, then do the slow work:
 
 ```ts
 // inside the click handler, BEFORE unlock
-if (await store.access() !== 'granted') {
-  if (!await store.requestAccess()) return   // user declined
+async function onUnlockClick() {
+  if (await store.access() !== 'granted') {
+    if (!await store.requestAccess()) return   // user declined
+  }
+  await unlockVault(password)                  // slow; activation already spent
 }
-await unlockVault(password)                  // slow; activation already spent
 ```
 
 `access()` reports four states, because "click to reconnect" and "you are off the office
@@ -132,7 +142,7 @@ are naturally safe — different files. The exposure concentrates in shared obje
 
 ```ts
 import { createStoreLocator } from '@noy-db/hub/to'
-import { registerBrowserFsStore, browserFsStoreDescriptor } from '@noy-db/to-browser-fs'
+import { registerBrowserFsStore, browserFsStoreDescriptor, recallDirectory } from '@noy-db/to-browser-fs'
 
 const locator = createStoreLocator()
 registerBrowserFsStore(locator)

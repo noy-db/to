@@ -24,7 +24,7 @@ const client = new S3Client({ region: 'ap-southeast-1' })
 const db = await createNoydb({
   store: toAwsS3({ client, bucket: 'noydb-prod', prefix: 'tenant-a' }),
   user: 'alice',
-  secret: process.env.NOYDB_SECRET!,
+  secret: userSecret, // from your unlock flow or environment; never hard-code it
 })
 ```
 
@@ -120,6 +120,8 @@ Pass a `credentials` provider rather than static keys, so a browser client never
 long-lived secret:
 
 ```ts
+import { toAwsS3 } from '@noy-db/to-aws-s3'
+
 toAwsS3({
   bucket: 'noydb-prod',
   region: 'ap-southeast-1',

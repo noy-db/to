@@ -25,7 +25,7 @@ const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: 'ap-sout
 const db = await createNoydb({
   store: toAwsDynamo({ client, table: 'noydb-prod' }),
   user: 'alice',
-  secret: process.env.NOYDB_SECRET!,
+  secret: userSecret, // from your unlock flow or environment; never hard-code it
 })
 ```
 
@@ -84,6 +84,8 @@ Granting `dynamodb:DescribeTable` does not help — that is not the call being m
 Pass a `credentials` provider rather than static keys, so a browser client never holds a long-lived secret:
 
 ```ts
+import { toAwsDynamo } from '@noy-db/to-aws-dynamo'
+
 toAwsDynamo({
   table: 'noydb-prod',
   region: 'ap-southeast-1',

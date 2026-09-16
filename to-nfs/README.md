@@ -36,6 +36,8 @@ travel in a pod — but it means the two can disagree, and writes then land
 somewhere else silently and permanently.
 
 ```ts
+import { toNfs } from '@noy-db/to-nfs'
+
 const store = toNfs({
   mountPath: '/mnt/vaults',           // device-local: where it is mounted here
   server: 'nas.local',                // logical identity: which export this is
