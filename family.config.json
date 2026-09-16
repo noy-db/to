@@ -3,5 +3,9 @@
   "manager": "pnpm",
   "binds": "@noy-db/hub/to",
   "publishes": true,
-  "gates": ["architecture", "check-license"]
+  "gates": [
+    "architecture",
+    "check-license",
+    "prose-examples"
+  ]
 }
