@@ -74,6 +74,9 @@ importers:
       '@noy-db/test-adapter-conformance':
         specifier: 0.8.0
         version: 0.8.0(@noy-db/hub@0.8.0)(vitest@3.2.6(@types/node@22.20.0)(happy-dom@18.0.1))
+      '@noy-db/to-browser-idb':
+        specifier: 0.8.0
+        version: 0.8.0(@noy-db/hub@0.8.0)
       fake-indexeddb:
         specifier: ^6.0.0
         version: 6.2.5
@@ -835,6 +838,12 @@ packages:
     peerDependencies:
       '@noy-db/hub': ^0.8.0
       vitest: ^3.0.0
+
+  '@noy-db/to-browser-idb@0.8.0':
+    resolution: {integrity: sha512-mGOX4BYnPdFzr8vmbk+BruMs5/O9q+knU1LB0crYIQZ8zoSblfASmxAxR0MQle8I8r0Y5RLIRXSkAmNnH8ohJg==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@noy-db/hub': ^0.8.0
 
   '@rollup/rollup-android-arm-eabi@4.62.2':
     resolution: {integrity: sha512-6o7ZLZK+BeenkZCFNDXqpbjw9bD6nuWonvS/lwQJp7NoVVxm6p3qE7qQ5jGuBjiFsgvqjD8mZAU5oWxTmbOeOg==}
@@ -2321,6 +2330,10 @@ snapshots:
     dependencies:
       '@noy-db/hub': 0.8.0
       vitest: 3.2.6(@types/node@22.20.0)(happy-dom@18.0.1)
+
+  '@noy-db/to-browser-idb@0.8.0(@noy-db/hub@0.8.0)':
+    dependencies:
+      '@noy-db/hub': 0.8.0
 
   '@rollup/rollup-android-arm-eabi@4.62.2':
     optional: true
