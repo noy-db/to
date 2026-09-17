@@ -5,8 +5,9 @@ Extended storage adapters for [noy-db](https://github.com/noy-db/core) — the n
 `NoydbStore` implementation bound to the published `@noy-db/hub/to` contract; the hub encrypts
 before any adapter is called, so stores only ever see ciphertext.
 
-The essential default stores (`to-memory`, `to-file`, `to-browser-idb`, `to-meter`) ship from
-the `noy-db` core repo. Install only the adapter you need, e.g. `pnpm add @noy-db/to-aws-s3 @noy-db/hub`.
+The essential default stores (`to-file`, `to-browser-idb`, `to-meter`) ship from the `noy-db` core
+repo; `to-memory` relocated here (noy-db/family#17). Install only the adapter you need, e.g.
+`pnpm add @noy-db/to-aws-s3 @noy-db/hub`.
 
 ## What a passing test suite here does and does not prove
 

@@ -1,0 +1,19 @@
+{
+  // __tests__/ is outside tsconfig.json's `include` (`["src"]`) and vitest transpiles without
+  // typechecking, so without this program nothing typechecks this package's tests. noy-db/to#6.
+  //
+  // `exclude` is a BURN-DOWN LIST, not configuration: each entry is a file that does not
+  // typecheck yet. Delete entries as they are fixed; empty means finished. A new test file is
+  // covered the day it is written because it was never on the list — do not add to it.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    // Never []: that strips the ambient globals a package declaring @types/node is entitled to.
+    "types": ["node"]
+  },
+  "include": ["src", "__tests__"],
+  "exclude": []
+}

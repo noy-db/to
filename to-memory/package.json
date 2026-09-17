@@ -1,0 +1,62 @@
+{
+  "name": "@noy-db/to-memory",
+  "version": "0.8.0",
+  "description": "In-memory adapter for noy-db — ideal for testing, development, and ephemeral workloads",
+  "license": "Apache-2.0",
+  "author": "vLannaAi <vicio@lanna.ai>",
+  "homepage": "https://github.com/noy-db/to/tree/main/to-memory#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noy-db/to.git",
+    "directory": "to-memory"
+  },
+  "bugs": {
+    "url": "https://github.com/noy-db/to/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
+  },
+  "peerDependencies": {
+    "@noy-db/hub": "^0.8.0"
+  },
+  "devDependencies": {
+    "@noy-db/hub": "0.8.0",
+    "@noy-db/test-adapter-conformance": "0.8.0"
+  },
+  "keywords": [
+    "noy-db",
+    "adapter",
+    "in-memory",
+    "memory",
+    "storage",
+    "testing",
+    "encryption",
+    "zero-knowledge"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "latest"
+  }
+}
