@@ -50,6 +50,7 @@ import { toDrive } from '../../to-drive/src/index.js'
 import { mockDrive } from '../../to-drive/__tests__/_mock.js'
 import { toIcloud } from '../../to-icloud/src/index.js'
 import { mockFs } from '../../to-icloud/__tests__/_mock.js'
+import { toMemory } from '../../to-memory/src/index.js'
 import { toMysql } from '../../to-mysql/src/index.js'
 import { mockClient as mysqlMock } from '../../to-mysql/__tests__/_mock.js'
 import { toNfs, type MountDetector } from '../../to-nfs/src/index.js'
@@ -84,6 +85,7 @@ const WIRING: Record<string, { factory: string; shape: 'record' | 'vault'; condi
   'to-cloudflare-r2': { factory: 'toCloudflareR2', shape: 'record', make: () => toCloudflareR2({ bucket: 'b', client: fakeS3().client }) },
   'to-drive':         { factory: 'toDrive',        shape: 'vault',  make: () => toDrive({ drive: mockDrive() }) },
   'to-icloud':        { factory: 'toIcloud',       shape: 'vault',  make: () => toIcloud({ folder: '/docs-bridge-dump', fs: mockFs() }) },
+  'to-memory':        { factory: 'toMemory',       shape: 'record', make: () => toMemory() },
   'to-mysql':         { factory: 'toMysql',        shape: 'record', make: () => toMysql({ client: mysqlMock() }) },
   'to-nfs':           { factory: 'toNfs',          shape: 'record', make: () => toNfs({ mountPath: mkdtempSync(join(tmpdir(), 'docs-bridge-nfs-')), mountDetector: cleanDetector }) },
   'to-postgres':      { factory: 'toPostgres',     shape: 'record', make: () => toPostgres({ client: pgMock() }) },
