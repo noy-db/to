@@ -1,6 +1,6 @@
 {
   "name": "@noy-db/to-rest",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "REST/HTTP adapter for noy-db — NoydbStore client for the @noy-db/in-rest ciphertext RPC proxy (POST /rpc). The HTTP mirror of by-peer's peerStore(); the server never sees a secret or plaintext.",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",

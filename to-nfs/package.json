@@ -1,6 +1,6 @@
 {
   "name": "@noy-db/to-nfs",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "NFS network-file store for noy-db. Same JSON-file indexed layout as the local file store, with pre-flight checks for nolock / noac mount options that silently break versioning guarantees on stock NFS mounts.",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",

@@ -1,6 +1,6 @@
 {
   "name": "@noy-db/to-browser-fs",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "File System Access API adapter for noy-db — a browser sibling to to-file, so a page can read and write a mounted network share",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",

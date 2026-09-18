@@ -1,5 +1,9 @@
 # Changelog — to-memory
 
+## 0.8.1
+
+Relocated from `noy-db/core` (family#17); first publish from this repo, on its version line. No code change — the store is byte-for-byte the one core published at 0.8.0. Hub peer stays `^0.8.0`.
+
 ## 0.8.0
 
 Lockstep bump to 0.8.0; no package-level change in this release. See `@noy-db/hub` 0.8.0 for the line's notes.

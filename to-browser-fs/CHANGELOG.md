@@ -1,5 +1,9 @@
 # @noy-db/to-browser-fs
 
+## 0.8.1
+
+README example now declares the `@noy-db/to-browser-idb` it imports (to#9). README licence section names Apache-2.0, matching the manifest and LICENSE.
+
 ## 0.8.0
 
 Lockstep bump to 0.8.0; no package-level change in this release. See `@noy-db/hub` 0.8.0 for

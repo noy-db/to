@@ -1,6 +1,6 @@
 {
   "name": "@noy-db/to-aws-s3",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "AWS S3 adapter for noy-db — encrypted object storage with zero-knowledge cloud sync",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",

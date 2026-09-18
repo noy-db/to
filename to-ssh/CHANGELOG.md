@@ -1,5 +1,9 @@
 # @noy-db/to-ssh
 
+## 0.8.1
+
+Lockstep bump to 0.8.1 for the `@noy-db/to-memory` relocation (family#17); no package-level code change. README licence section names Apache-2.0, matching the manifest and LICENSE.
+
 ## 0.8.0
 
 Lockstep bump to 0.8.0; no package-level change in this release. See `@noy-db/hub` 0.8.0 for
