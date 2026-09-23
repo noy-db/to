@@ -71,7 +71,13 @@ Because the vault name is the **whole** partition key — never a prefix of it, 
 }
 ```
 
-Those four actions are the complete set this store issues, plus `dynamodb:TransactWriteItems` if you use `tx()`. Enforcement is IAM's job — the store's only obligation is to produce a key layout that conditions can be written against, and to tell you what it is.
+Those four actions are the complete set this store issues — **`tx()` included, and that is not an omission.** There is no `dynamodb:TransactWriteItems` IAM action to grant. `TransactWriteItems` authorizes against the per-item actions of the operations it carries, and `tx()` emits only `Put` and `Delete` — the compare-and-swap rides a `ConditionExpression` on the item write itself, never a separate `ConditionCheck` — so `dynamodb:PutItem` and `dynamodb:DeleteItem` above already cover it. `dynamodb:ConditionCheckItem` is not owed either.
+
+⚠️ Granting `dynamodb:TransactWriteItems` "to be safe" is not harmless: IAM accepts unknown action names silently, and policy simulation reports them as allowed, so the mistake is invisible to testing and survives any amount of it.
+
+To **forbid** `tx()` under a scoped policy, the handle is the `dynamodb:EnclosingOperation` condition key — match it against `TransactWriteItems` — not the absence of an action grant.
+
+Enforcement is IAM's job — the store's only obligation is to produce a key layout that conditions can be written against, and to tell you what it is.
 
 ### ⚠️ `ping()` is denied by a vault-scoped policy
 
