@@ -73,7 +73,7 @@ Because the vault name is the **whole** partition key — never a prefix of it, 
 
 Those four actions are the complete set this store issues — **`tx()` included, and that is not an omission.** There is no `dynamodb:TransactWriteItems` IAM action to grant. `TransactWriteItems` authorizes against the per-item actions of the operations it carries, and `tx()` emits only `Put` and `Delete` — the compare-and-swap rides a `ConditionExpression` on the item write itself, never a separate `ConditionCheck` — so `dynamodb:PutItem` and `dynamodb:DeleteItem` above already cover it. `dynamodb:ConditionCheckItem` is not owed either.
 
-⚠️ Granting `dynamodb:TransactWriteItems` "to be safe" is not harmless: IAM accepts unknown action names silently, and policy simulation reports them as allowed, so the mistake is invisible to testing and survives any amount of it.
+⚠️ Granting `dynamodb:TransactWriteItems` "to be safe" is not harmless, and **check it with the right tool.** IAM accepts unknown action names, and `iam:SimulateCustomPolicy` reports them as `allowed` — it answers whether the policy's `Action` element matches the string you passed, not whether that string names an operation that exists, so it confirms a fabricated action just as readily as a real one. What catches it is Access Analyzer: `aws accessanalyzer validate-policy` returns `INVALID_ACTION` — *"The action dynamodb:TransactWriteItems does not exist."* Lint scoped policies with that; the simulator cannot answer this question.
 
 To **forbid** `tx()` under a scoped policy, the handle is the `dynamodb:EnclosingOperation` condition key — match it against `TransactWriteItems` — not the absence of an action grant.
 
