@@ -12,7 +12,7 @@ jobs:
   prune:
     # A called workflow can only REDUCE the caller's token, never elevate it,
     # so `packages: write` has to be granted here.
-    uses: noy-db/.github/.github/workflows/prune-snapshots.yml@v1
+    uses: noy-db/.github/.github/workflows/prune-snapshots.yml@v2
     permissions:
       contents: read
       packages: write

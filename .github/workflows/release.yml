@@ -12,6 +12,6 @@ permissions:
   actions: read
 jobs:
   release:
-    uses: noy-db/.github/.github/workflows/release.yml@v1
+    uses: noy-db/.github/.github/workflows/release.yml@v2
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

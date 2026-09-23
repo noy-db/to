@@ -8,7 +8,7 @@ on:
 
 jobs:
   snapshot:
-    uses: noy-db/.github/.github/workflows/snapshot.yml@v1
+    uses: noy-db/.github/.github/workflows/snapshot.yml@v2
     permissions:
       contents: read
       packages: write

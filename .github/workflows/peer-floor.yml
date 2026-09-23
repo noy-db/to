@@ -8,4 +8,4 @@ on:
 
 jobs:
   peer-floor:
-    uses: noy-db/.github/.github/workflows/peer-floor.yml@v1
+    uses: noy-db/.github/.github/workflows/peer-floor.yml@v2
