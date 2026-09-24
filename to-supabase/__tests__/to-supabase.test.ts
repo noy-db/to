@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { EncryptedEnvelope } from '@noy-db/hub'
 import { toSupabase, type PostgresClient } from '../src/index.js'
 
+interface Row { vault: string; collection: string; id: string; v: number; envelope: EncryptedEnvelope }
+
 /** Reuse the minimal mock from the to-postgres test shape. */
 function mockClient(): PostgresClient & { rowMap: Map<string, Row> } {
-  interface Row { vault: string; collection: string; id: string; v: number; envelope: EncryptedEnvelope }
   const rowMap = new Map<string, Row>()
   const key = (v: string, c: string, i: string) => `${v}\x00${c}\x00${i}`
 

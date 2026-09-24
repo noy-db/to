@@ -17,7 +17,7 @@ function env(v: number, data = 'd'): EncryptedEnvelope {
 describe('to-aws-dynamo — tx() via TransactWriteItems (#41)', () => {
   it('declares capabilities.txAtomic', () => {
     const store = toAwsDynamo({ table: 't', client: fakeDynamo().client })
-    expect(store.capabilities.txAtomic).toBe(true)
+    expect(store.capabilities!.txAtomic).toBe(true)
   })
 
   it('commits the batch when every expectedVersion matches', async () => {

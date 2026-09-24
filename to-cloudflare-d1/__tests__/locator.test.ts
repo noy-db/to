@@ -55,7 +55,7 @@ describe('to-cloudflare-d1 — store-locator descriptor (#58)', () => {
     const envelope = { _noydb: 1 as const, _v: 1, _ts: new Date().toISOString(), _iv: 'i', _data: 'ZA==' }
     await store.put('v', 'c', 'a', envelope)
     const { results } = await client.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>()
-    const tables = results.map(r => r.name)
+    const tables = results!.map(r => r.name)
     expect(tables).toContain('custom_table')
     expect(tables).not.toContain('noydb_envelopes')
   })

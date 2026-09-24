@@ -26,7 +26,7 @@ function recordingClient(): PostgresClient & { queries: string[] } {
 describe('to-supabase — tx() inheritance (regression pin for #21)', () => {
   it('the returned store carries an inherited callable tx() alongside txAtomic: true', () => {
     const store = toSupabase({ client: recordingClient() })
-    expect(store.capabilities.txAtomic).toBe(true)
+    expect(store.capabilities!.txAtomic).toBe(true)
     expect(typeof store.tx).toBe('function')
   })
 

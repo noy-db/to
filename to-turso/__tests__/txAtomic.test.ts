@@ -30,12 +30,12 @@ function batchClient(): LibsqlClient & { batches: number; statementCounts: numbe
 describe('to-turso — txAtomic capability (#22)', () => {
   it('declares txAtomic: true when the injected client supports batch', () => {
     const store = toTurso({ client: batchClient() })
-    expect(store.capabilities.txAtomic).toBe(true)
+    expect(store.capabilities!.txAtomic).toBe(true)
   })
 
   it('declares txAtomic: false when the injected client lacks batch', () => {
     const store = toTurso({ client: { execute: async () => ({ rows: [] }) } })
-    expect(store.capabilities.txAtomic).toBe(false)
+    expect(store.capabilities!.txAtomic).toBe(false)
   })
 
   it('declares txAtomic: true on the clientFactory path', () => {
@@ -43,7 +43,7 @@ describe('to-turso — txAtomic capability (#22)', () => {
       clientFactory: () => batchClient(),
       credentials: async () => ({ kind: 'token', token: 't' }),
     })
-    expect(store.capabilities.txAtomic).toBe(true)
+    expect(store.capabilities!.txAtomic).toBe(true)
   })
 
   it('tx() sends all ops as one batch (single implicit transaction)', async () => {

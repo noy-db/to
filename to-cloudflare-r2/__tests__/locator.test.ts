@@ -50,7 +50,7 @@ describe('to-cloudflare-r2 — store-locator descriptor (#58)', () => {
         seenCommands.push({ name, Bucket: input.Bucket, Key: input.Key })
         return fake.client.send(command as never)
       },
-    } as typeof fake.client
+    } as unknown as typeof fake.client
     const descriptor = r2StoreDescriptor({ bucket: 'custom-bucket', accountId: 'acc', prefix: 'custom-prefix' })
     const store = await locator.resolve(descriptor, { binding: { client: spyClient } })
     const envelope = { _noydb: 1 as const, _v: 1, _ts: new Date().toISOString(), _iv: 'i', _data: 'ZA==' }
@@ -97,7 +97,7 @@ describe('to-cloudflare-r2 — descriptor + credentials threading (#58)', () => 
     })
 
     expect(capturedConfigs).toHaveLength(1)
-    const config = capturedConfigs[0]
+    const config = capturedConfigs[0]!
     // Prove credentials is a function (not static keys).
     expect(typeof config['credentials']).toBe('function')
 

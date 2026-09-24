@@ -94,11 +94,11 @@ describe('to-aws-dynamo — store-locator descriptor (#58)', () => {
       })
 
       // Force getClient() to build SDK config by calling an operation
-      await (await store).ping().catch(() => {})
+      await (await store).ping!().catch(() => {})
 
       // Verify SDK constructor was called with a credentials function
       expect(capturedConfigs).toHaveLength(1)
-      const config = capturedConfigs[0]
+      const config = capturedConfigs[0]!
       expect(typeof config['credentials']).toBe('function')
 
       // Verify the credentials function works
