@@ -87,7 +87,7 @@ describe('to-aws-s3 — credentials refresh hook', () => {
       toAwsS3({ bucket: 'b', credentials: async () => creds })
 
       expect(capturedConfigs).toHaveLength(1)
-      const config = capturedConfigs[0]
+      const config = capturedConfigs[0]!
       expect(typeof config['credentials']).toBe('function')
 
       const resolved = await (config['credentials'] as () => Promise<{ accessKeyId: string; expiration?: Date }>)()
@@ -111,7 +111,7 @@ describe('to-aws-s3 — credentials refresh hook', () => {
       toAwsS3({ bucket: 'b' })
 
       expect(capturedConfigs).toHaveLength(1)
-      expect('credentials' in capturedConfigs[0]).toBe(false)
+      expect('credentials' in capturedConfigs[0]!).toBe(false)
 
       vi.doUnmock('@aws-sdk/client-s3')
     })
@@ -166,7 +166,7 @@ describe('to-aws-s3 — credentials refresh hook', () => {
       s3Bundle({ bucket: 'b', credentials: async () => creds })
 
       expect(capturedConfigs).toHaveLength(1)
-      const config = capturedConfigs[0]
+      const config = capturedConfigs[0]!
       expect(typeof config['credentials']).toBe('function')
 
       const resolved = await (config['credentials'] as () => Promise<{ accessKeyId: string; expiration?: Date }>)()
@@ -190,7 +190,7 @@ describe('to-aws-s3 — credentials refresh hook', () => {
       s3Bundle({ bucket: 'b' })
 
       expect(capturedConfigs).toHaveLength(1)
-      expect('credentials' in capturedConfigs[0]).toBe(false)
+      expect('credentials' in capturedConfigs[0]!).toBe(false)
 
       vi.doUnmock('@aws-sdk/client-s3')
     })

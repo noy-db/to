@@ -79,10 +79,10 @@ describe('to-aws-dynamo — credentials refresh hook', () => {
       const adapter = toAwsDynamo({ table: 't', credentials: async () => creds })
 
       // Any operation forces getClient() to build the SDK config.
-      await adapter.ping().catch(() => {})
+      await adapter.ping!().catch(() => {})
 
       expect(capturedConfigs).toHaveLength(1)
-      const config = capturedConfigs[0]
+      const config = capturedConfigs[0]!
       expect(typeof config['credentials']).toBe('function')
 
       const resolved = await (config['credentials'] as () => Promise<{ accessKeyId: string; expiration?: Date }>)()
@@ -109,10 +109,10 @@ describe('to-aws-dynamo — credentials refresh hook', () => {
 
       const { toAwsDynamo } = await import('../src/index.js')
       const adapter = toAwsDynamo({ table: 't' })
-      await adapter.ping().catch(() => {})
+      await adapter.ping!().catch(() => {})
 
       expect(capturedConfigs).toHaveLength(1)
-      expect('credentials' in capturedConfigs[0]).toBe(false)
+      expect('credentials' in capturedConfigs[0]!).toBe(false)
 
       vi.doUnmock('@aws-sdk/client-dynamodb')
       vi.doUnmock('@aws-sdk/lib-dynamodb')
@@ -138,7 +138,7 @@ describe('to-aws-dynamo — credentials refresh hook', () => {
         client: fakeClient,
         credentials: async () => ({ kind: 'aws', accessKeyId: 'a', secretAccessKey: 's' }),
       })
-      await adapter.ping()
+      await adapter.ping!()
 
       // getClient() must short-circuit on options.client and never build config.
       expect(capturedConfigs).toHaveLength(0)

@@ -96,7 +96,7 @@ describe('@noy-db/to-sqlite — real-engine migration (node:sqlite)', () => {
     // commit — a genuinely upgraded table (no `del` column, per (a) above)
     // made every `listPage` call fail with `SqliteError: no such column:
     // del`, even though `get`/`loadAll` (which use `SELECT *`) worked fine.
-    const page = await store.listPage('v1', 'c1')
+    const page = await store.listPage!('v1', 'c1')
     expect(page.items.map(item => item.id)).toEqual(['legacy1', 'new1'])
   })
 })

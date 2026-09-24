@@ -49,7 +49,7 @@ describe('to-aws-s3 — store-locator descriptor (#56)', () => {
         seenCommands.push({ name, Bucket: input.Bucket, Key: input.Key })
         return fake.client.send(command as never)
       },
-    } as typeof fake.client
+    } as unknown as typeof fake.client
     const descriptor = s3StoreDescriptor({ bucket: 'custom-bucket', prefix: 'custom-prefix' })
     const store = await locator.resolve(descriptor, { binding: { client: spyClient } })
     const envelope = { _noydb: 1 as const, _v: 1, _ts: new Date().toISOString(), _iv: 'i', _data: 'ZA==' }

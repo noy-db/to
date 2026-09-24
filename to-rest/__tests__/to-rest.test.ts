@@ -107,7 +107,7 @@ describe('to-rest — RPC client (#55)', () => {
     })
     const err = await store.put('v', 'c', 'a', env(9), 1).catch(e => e as Error)
     expect(isConflictError(err)).toBe(false)
-    expect(err.message).toMatch(/server error \(409\): QuotaExceededError/)
+    expect((err as Error).message).toMatch(/server error \(409\): QuotaExceededError/)
   })
 
   it('maps 401 to a clear auth error (fail-closed server)', async () => {

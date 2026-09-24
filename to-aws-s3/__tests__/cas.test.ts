@@ -120,7 +120,7 @@ describe('to-aws-s3 CAS (casAtomic)', () => {
     hooks.afterGet = (key) => {
       const o = objects.get(key)!
       objects.set(key, { body: o.body, etag: `${o.etag}-concurrent` })
-      hooks.afterGet = undefined
+      delete hooks.afterGet
     }
     await expect(store.put('v', 'c', 'id', env(2), 1)).rejects.toBeInstanceOf(ConflictError)
   })

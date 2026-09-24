@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createStoreLocator } from '@noy-db/hub/to'
+import type { StoreDescriptor } from '@noy-db/hub/to'
 import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
 import { registerPostgresStore, postgresStoreDescriptor } from '../src/index.js'
 import { mockClient } from './_mock.js'
@@ -76,12 +77,14 @@ describe('to-postgres — store-locator descriptor (#58)', () => {
         return client.query<T>(sql, params)
       },
     }
+    // Hand-built on purpose: this asserts the runtime precedence rule for a
+    // descriptor the TYPE does not admit, so the cast is the point of the test.
     const descriptor = {
       kind: 'postgres',
       class: 'cloud',
       address: { table: 'from_address' },
       options: { tableName: 'from_options' },
-    }
+    } as unknown as StoreDescriptor
     const store = await locator.resolve(descriptor, { binding: { client: spiedClient } })
     const envelope = { _noydb: 1 as const, _v: 1, _ts: new Date().toISOString(), _iv: 'i', _data: 'ZA==' }
     await store.put('v', 'c', 'a', envelope)

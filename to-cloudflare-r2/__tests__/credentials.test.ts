@@ -34,7 +34,7 @@ describe('to-cloudflare-r2 — credentials refresh hook', () => {
     toCloudflareR2({ bucket: 'b', accountId: 'acc', credentials: async () => ROLLING })
 
     expect(capturedConfigs).toHaveLength(1)
-    const config = capturedConfigs[0]
+    const config = capturedConfigs[0]!
     // R2-specific plumbing must be untouched by the credentials path.
     expect(config['endpoint']).toBe('https://acc.r2.cloudflarestorage.com')
     expect(config['region']).toBe('auto')
@@ -66,7 +66,7 @@ describe('to-cloudflare-r2 — credentials refresh hook', () => {
     })
 
     expect(capturedConfigs).toHaveLength(1)
-    expect(typeof capturedConfigs[0]['credentials']).toBe('function')
+    expect(typeof capturedConfigs[0]!['credentials']).toBe('function')
 
     vi.doUnmock('@aws-sdk/client-s3')
   })

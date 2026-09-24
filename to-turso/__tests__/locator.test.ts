@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createStoreLocator } from '@noy-db/hub/to'
-import type { StoreCredentials } from '@noy-db/hub/to'
+import type { StoreCredentials, StoreDescriptor } from '@noy-db/hub/to'
 import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
 import { registerTursoStore, tursoStoreDescriptor } from '../src/index.js'
 import { libsqlOverNodeSqlite } from './_engine.js'
@@ -52,7 +52,9 @@ describe('to-turso — store-locator descriptor (#58)', () => {
   it('resolving a hand-built descriptor missing address.url throws a clear error', () => {
     const locator = createStoreLocator()
     registerTursoStore(locator)
-    const descriptor = { kind: 'turso', class: 'cloud', address: {} }
+    // Hand-built on purpose: the test exists to prove the RUNTIME guard rejects
+    // a descriptor the type already forbids, so the cast is the point of the test.
+    const descriptor = { kind: 'turso', class: 'cloud', address: {} } as unknown as StoreDescriptor
     expect(() => locator.resolve(descriptor, { binding: { client: libsqlOverNodeSqlite() } })).toThrow(/address\.url/)
   })
 
