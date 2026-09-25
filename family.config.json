@@ -6,6 +6,7 @@
   "gates": [
     "architecture",
     "check-license",
-    "prose-examples"
+    "prose-examples",
+    "changeset-names"
   ]
 }
