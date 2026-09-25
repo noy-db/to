@@ -1,4 +1,4 @@
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toMemory } from '../src/index.js'
 
 runStoreConformanceTests('memory', async () => toMemory())

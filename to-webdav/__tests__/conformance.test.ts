@@ -3,7 +3,7 @@
  * WebDAV server fake (`_fake-dav.ts`) — PROPFIND multi-status listings with
  * percent-encoded hrefs, which is where the id/collection round-trip lives.
  */
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toWebdav } from '../src/index.js'
 import { fakeDav } from './_fake-dav.js'
 

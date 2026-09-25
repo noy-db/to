@@ -3,7 +3,7 @@
  * DynamoDB document-client fake (`_fake-dynamo.ts`): conditional puts and
  * sk-sorted Query pagination.
  */
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toAwsDynamo } from '../src/index.js'
 import { fakeDynamo } from './_fake-dynamo.js'
 

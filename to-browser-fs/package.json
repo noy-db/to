@@ -1,7 +1,7 @@
 {
   "name": "@noy-db/to-browser-fs",
   "version": "0.8.1",
-  "description": "File System Access API adapter for noy-db — a browser sibling to to-file, so a page can read and write a mounted network share",
+  "description": "File System Access API adapter for noy-db \u2014 a browser sibling to to-file, so a page can read and write a mounted network share",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
   "homepage": "https://github.com/noy-db/to/tree/main/to-browser-fs#readme",
@@ -39,11 +39,11 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "peerDependencies": {
-    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0"
+    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0 || ^0.9.0-pre.1"
   },
   "devDependencies": {
-    "@noy-db/hub": "0.8.0",
-    "@noy-db/test-adapter-conformance": "0.8.0",
+    "@noy-db/hub": "0.9.0-pre.1",
+    "@noy-db/ports": "0.9.0-pre.1",
     "@noy-db/to-browser-idb": "0.8.0",
     "fake-indexeddb": "^6.0.0",
     "happy-dom": "^18.0.0"
@@ -64,5 +64,6 @@
   "publishConfig": {
     "access": "public",
     "tag": "latest"
-  }
+  },
+  "dependencies": {}
 }

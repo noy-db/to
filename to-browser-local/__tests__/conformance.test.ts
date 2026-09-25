@@ -1,4 +1,4 @@
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toBrowserLocal } from '../src/index.js'
 
 // Run conformance suite against localStorage backend

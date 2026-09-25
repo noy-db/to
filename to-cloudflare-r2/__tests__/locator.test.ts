@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import type { StoreCredentials } from '@noy-db/hub/to'
 import { createStoreLocator } from '@noy-db/hub/to'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { registerR2Store, r2StoreDescriptor } from '../src/index.js'
 import { fakeS3 } from '../../to-aws-s3/__tests__/_fake-s3.js'
 

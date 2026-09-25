@@ -10,7 +10,7 @@
  * mock filesystem.
  */
 import { wrapPodStore } from '@noy-db/hub/pod'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toIcloud } from '../src/index.js'
 import { mockFs } from './_mock.js'
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createStoreLocator } from '@noy-db/hub/to'
 import { wrapPodStore } from '@noy-db/hub/pod'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import type { NoydbPodStore } from '@noy-db/hub/to'
 import { registerDriveStore, driveStoreDescriptor } from '../src/index.js'
 import { mockDrive } from './_mock.js'

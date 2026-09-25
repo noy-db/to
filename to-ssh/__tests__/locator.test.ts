@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createStoreLocator } from '@noy-db/hub/to'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { registerSshStore, sshStoreDescriptor } from '../src/index.js'
 import { mockSftp } from './_mock.js'
 

@@ -3,7 +3,7 @@
  * S3 fake (`_fake-s3.ts`) — conditional writes, sorted ListObjectsV2 with
  * continuation tokens, and server-assigned LastModified.
  */
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toAwsS3 } from '../src/index.js'
 import { fakeS3 } from './_fake-s3.js'
 
