@@ -39,11 +39,11 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "peerDependencies": {
-    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0"
+    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0 || ^0.9.0-pre.1"
   },
   "devDependencies": {
-    "@noy-db/hub": "0.8.0",
-    "@noy-db/test-adapter-conformance": "0.8.0",
+    "@noy-db/hub": "0.9.0-pre.1",
+    "@noy-db/ports": "0.9.0-pre.1",
     "happy-dom": "^18.0.0"
   },
   "keywords": [
@@ -60,5 +60,6 @@
   "publishConfig": {
     "access": "public",
     "tag": "latest"
-  }
+  },
+  "dependencies": {}
 }

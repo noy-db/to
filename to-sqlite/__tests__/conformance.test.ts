@@ -10,7 +10,7 @@
  * down between cases.
  */
 import { DatabaseSync } from 'node:sqlite'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toSqlite } from '../src/index.js'
 
 runStoreConformanceTests('to-sqlite (node:sqlite, in-memory)', async () =>

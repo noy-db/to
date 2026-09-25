@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createStoreLocator } from '@noy-db/hub/to'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { registerCloudflareD1Store, cloudflareD1StoreDescriptor } from '../src/index.js'
 import { d1OverNodeSqlite } from './_engine.js'
 

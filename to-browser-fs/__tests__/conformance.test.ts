@@ -1,4 +1,4 @@
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { fakeRoot } from './fake-fs.js'
 import { toBrowserFs } from '../src/index.js'
 

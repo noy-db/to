@@ -8,7 +8,7 @@
  * inside the wrapper, not in their own code. Fixed in @noy-db/hub 0.4.0-pre.11.
  */
 import { wrapPodStore } from '@noy-db/hub/pod'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toDrive } from '../src/index.js'
 import { mockDrive } from './_mock.js'
 

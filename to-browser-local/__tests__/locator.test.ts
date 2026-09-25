@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createStoreLocator } from '@noy-db/hub/to'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { registerBrowserLocalStore, browserLocalStoreDescriptor } from '../src/index.js'
 
 // noy-db-to#58 — the `browser`-class citizen: no binding, no credentials.

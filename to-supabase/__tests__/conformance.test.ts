@@ -6,7 +6,7 @@
  * conforming against the full pg mock exercises the real delegation path
  * (the package's own minimal inline mock covers only its focused tests).
  */
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toSupabase } from '../src/index.js'
 import { mockClient } from '../../to-postgres/__tests__/_mock.js'
 

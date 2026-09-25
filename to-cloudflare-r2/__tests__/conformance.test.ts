@@ -6,7 +6,7 @@
  * same fake exercises the real delegation (including the R2 capability
  * override staying contract-honest).
  */
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toCloudflareR2 } from '../src/index.js'
 import { fakeS3 } from '../../to-aws-s3/__tests__/_fake-s3.js'
 

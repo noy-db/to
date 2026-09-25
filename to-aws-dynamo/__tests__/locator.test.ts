@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { StoreCredentials } from '@noy-db/hub/to'
 import { createStoreLocator } from '@noy-db/hub/to'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { registerDynamoStore, dynamoStoreDescriptor } from '../src/index.js'
 import { fakeDynamo } from './_fake-dynamo.js'
 

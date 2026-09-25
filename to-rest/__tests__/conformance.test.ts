@@ -6,7 +6,7 @@
  * the real wire contract (router dispatch, auth, error envelopes) on
  * every call, not a mock interpretation of it.
  */
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toRest } from '../src/index.js'
 import { restHarness } from './_harness.js'
 

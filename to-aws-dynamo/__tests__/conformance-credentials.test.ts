@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toAwsDynamo } from '../src/index.js'
 import { signedDynamoFake } from './_signed-dynamo.js'
 

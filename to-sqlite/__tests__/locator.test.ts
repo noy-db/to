@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
 import { createStoreLocator } from '@noy-db/hub/to'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { registerSqliteStore, sqliteStoreDescriptor } from '../src/index.js'
 
 // noy-db-to#58 — opaque-client tier: a credentialless, JSON-serializable

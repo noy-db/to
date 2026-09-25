@@ -19,7 +19,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { S3Client } from '@aws-sdk/client-s3'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toAwsS3 } from '../src/index.js'
 import { signedS3Fake } from './_signed-s3.js'
 

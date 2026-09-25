@@ -10,7 +10,7 @@
  * one-transaction batch semantics — which is exactly the atomicity claim the
  * store's `txAtomic` capability makes (#22).
  */
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { toTurso } from '../src/index.js'
 import { libsqlOverNodeSqlite } from './_engine.js'
 

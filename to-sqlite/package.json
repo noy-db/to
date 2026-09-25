@@ -1,7 +1,7 @@
 {
   "name": "@noy-db/to-sqlite",
   "version": "0.8.1",
-  "description": "SQLite adapter for noy-db — single-file local encrypted document store. Works with better-sqlite3, node:sqlite (Node 22+), or bun:sqlite via a duck-typed Database interface. casAtomic: true (BEGIN IMMEDIATE + UPDATE WHERE _v=?).",
+  "description": "SQLite adapter for noy-db \u2014 single-file local encrypted document store. Works with better-sqlite3, node:sqlite (Node 22+), or bun:sqlite via a duck-typed Database interface. casAtomic: true (BEGIN IMMEDIATE + UPDATE WHERE _v=?).",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
   "homepage": "https://github.com/noy-db/to/tree/main/to-sqlite#readme",
@@ -39,12 +39,12 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "peerDependencies": {
-    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0"
+    "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0 || ^0.9.0-pre.1"
   },
   "devDependencies": {
-    "@noy-db/hub": "0.8.0",
-    "@types/node": "^22.0.0",
-    "@noy-db/test-adapter-conformance": "0.8.0"
+    "@noy-db/hub": "0.9.0-pre.1",
+    "@noy-db/ports": "0.9.0-pre.1",
+    "@types/node": "^22.0.0"
   },
   "keywords": [
     "noy-db",
@@ -57,5 +57,6 @@
   "publishConfig": {
     "access": "public",
     "tag": "latest"
-  }
+  },
+  "dependencies": {}
 }

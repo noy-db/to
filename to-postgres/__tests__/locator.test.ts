@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createStoreLocator } from '@noy-db/hub/to'
 import type { StoreDescriptor } from '@noy-db/hub/to'
-import { runStoreConformanceTests } from '@noy-db/test-adapter-conformance'
+import { runStoreConformanceTests } from '@noy-db/ports/to'
 import { registerPostgresStore, postgresStoreDescriptor } from '../src/index.js'
 import { mockClient } from './_mock.js'
 
