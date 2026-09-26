@@ -3,7 +3,7 @@ import { ConflictError } from '@noy-db/hub/to'
 import { fakeRoot } from './fake-fs.js'
 import { toBrowserFs, FsWriteVerifyError } from '../src/index.js'
 
-const envelope = { _noydb: 1 as const, _v: 1, _ts: '2026-08-11T00:00:00.000Z', _data: 'Y2lwaGVydGV4dA==' }
+const envelope = { _noydb: 1 as const, _v: 1, _ts: '2026-08-11T00:00:00.000Z', _iv: 'AAAAAAAAAAAAAAAA', _data: 'Y2lwaGVydGV4dA==' }
 
 describe('verify after write', () => {
   test('throws FsWriteVerifyError when the bytes read back differ', async () => {

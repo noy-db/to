@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { fakeRoot } from './fake-fs.js'
 import { toBrowserFs } from '../src/index.js'
 
-const envelope = { _noydb: 1 as const, _v: 1, _ts: '2026-08-11T00:00:00.000Z', _data: 'Y2lwaGVydGV4dA==' }
+const envelope = { _noydb: 1 as const, _v: 1, _ts: '2026-08-11T00:00:00.000Z', _iv: 'AAAAAAAAAAAAAAAA', _data: 'Y2lwaGVydGV4dA==' }
 
 describe('on-disk layout', () => {
   test('writes {vault}/{collection}/{id}.json, matching to-file', async () => {
