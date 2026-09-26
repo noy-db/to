@@ -1,0 +1,20 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+
+  // ⛔ EVERY IGNORE HERE CARRIES A DISCRIMINATOR — a way to tell that the row is a
+  // knip BLIND SPOT rather than a defect in this repo. A bare ignore is how a real
+  // finding gets silenced later (METHOD.md).
+
+  // DATA, not code. Two tiny package trees the check-architecture test copies and
+  // runs the gate over. A fixture that nothing imports is the point of a fixture.
+  //   discriminator: they live under __tests__/fixtures and each is a package tree
+  //   with its own package.json, consumed by cpSync rather than by an import.
+  "ignore": ["scripts/__tests__/fixtures/**"],
+
+  // A README dependency. `to-browser-fs/README.md` imports it, and the rail's
+  // `prose-examples` gate COMPILES every shipped README — so this is a real,
+  // required devDependency. knip does not read markdown, so it calls it unused.
+  //   discriminator: `git grep -l to-browser-idb -- to-browser-fs` hits README.md
+  //   and package.json, and no file under src/.
+  "ignoreDependencies": ["@noy-db/to-browser-idb"]
+}

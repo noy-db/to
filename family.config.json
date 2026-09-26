@@ -11,5 +11,8 @@
     "check-license",
     "prose-examples",
     "changeset-names"
+  ],
+  "localChecks": [
+    "pnpm knip"
   ]
 }
