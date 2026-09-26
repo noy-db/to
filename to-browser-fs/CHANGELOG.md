@@ -1,5 +1,15 @@
 # @noy-db/to-browser-fs
 
+## 0.9.0-pre.0
+
+Lockstep bump to the 0.9 line; **no package-level code change**. Exact dev pins on
+`@noy-db/hub` and `@noy-db/ports` move `0.9.0-pre.1` → `0.9.0-pre.2`. The `@noy-db/hub`
+peer range already carried `^0.9.0-pre.1` and needs no second append: for a 0.x caret npm
+reads that as `>=0.9.0-pre.1 <0.10.0`, so it already admits `0.9.0` stable. `^0.9.0-pre.1`
+rather than `-pre.0` is deliberate — `pre.0` carries core#132 (last-writer-wins `_keyring`
+writes, `TamperedError` on a cold read) and nothing should resolve to it. Repo suite green at
+the new pin: 86 test files / 1892 tests.
+
 ## 0.8.1
 
 README example now declares the `@noy-db/to-browser-idb` it imports (to#9). README licence section names Apache-2.0, matching the manifest and LICENSE.

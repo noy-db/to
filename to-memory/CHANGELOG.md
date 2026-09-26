@@ -1,5 +1,15 @@
 # Changelog — to-memory
 
+## 0.9.0-pre.0
+
+Lockstep bump to the 0.9 line; **no package-level code change**. Exact dev pins on
+`@noy-db/hub` and `@noy-db/ports` move `0.9.0-pre.1` → `0.9.0-pre.2`. The `@noy-db/hub`
+peer range already carried `^0.9.0-pre.1` and needs no second append: for a 0.x caret npm
+reads that as `>=0.9.0-pre.1 <0.10.0`, so it already admits `0.9.0` stable. `^0.9.0-pre.1`
+rather than `-pre.0` is deliberate — `pre.0` carries core#132 (last-writer-wins `_keyring`
+writes, `TamperedError` on a cold read) and nothing should resolve to it. Repo suite green at
+the new pin: 86 test files / 1892 tests.
+
 ## 0.8.1
 
 Relocated from `noy-db/core` (family#17); first publish from this repo, on its version line. No code change — the store is byte-for-byte the one core published at 0.8.0. Hub peer stays `^0.8.0`.
