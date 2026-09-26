@@ -1,6 +1,6 @@
 {
   "name": "@noy-db/to-postgres",
-  "version": "0.8.1",
+  "version": "0.9.0-pre.0",
   "description": "PostgreSQL adapter for noy-db \u2014 encrypted-envelope KV with jsonb column. Works with any duck-typed pg-style Client (node-postgres, postgres.js, pg-native, Supabase, Neon serverless). casAtomic: true via UPDATE \u2026 WHERE _v = ?.",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
@@ -42,8 +42,8 @@
     "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0 || ^0.9.0-pre.1"
   },
   "devDependencies": {
-    "@noy-db/hub": "0.9.0-pre.1",
-    "@noy-db/ports": "0.9.0-pre.1",
+    "@noy-db/hub": "0.9.0-pre.2",
+    "@noy-db/ports": "0.9.0-pre.2",
     "@types/node": "^22.0.0"
   },
   "keywords": [

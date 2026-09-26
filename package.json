@@ -1,6 +1,6 @@
 {
   "name": "noy-db-to",
-  "version": "0.8.1",
+  "version": "0.9.0-pre.0",
   "private": true,
   "description": "Extended storage adapters for noy-db — the non-essential to-* family (cloud, server, remote-fs), bound to the published @noy-db/hub/to seam.",
   "license": "Apache-2.0",

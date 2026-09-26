@@ -5,6 +5,8 @@
   "publishes": true,
   "gates": [
     "architecture",
+    "versions-uniform",
+    "codemod-rows",
     "check-license",
     "prose-examples",
     "changeset-names"

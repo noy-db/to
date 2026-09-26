@@ -1,6 +1,6 @@
 {
   "name": "@noy-db/to-aws-dynamo",
-  "version": "0.8.1",
+  "version": "0.9.0-pre.0",
   "description": "AWS DynamoDB adapter for noy-db \u2014 single-table design, zero-knowledge cloud sync",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
@@ -46,8 +46,8 @@
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0",
-    "@noy-db/hub": "0.9.0-pre.1",
-    "@noy-db/ports": "0.9.0-pre.1",
+    "@noy-db/hub": "0.9.0-pre.2",
+    "@noy-db/ports": "0.9.0-pre.2",
     "@smithy/protocol-http": "^5.6.2"
   },
   "keywords": [

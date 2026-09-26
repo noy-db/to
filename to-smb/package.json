@@ -1,6 +1,6 @@
 {
   "name": "@noy-db/to-smb",
-  "version": "0.8.1",
+  "version": "0.9.0-pre.0",
   "description": "SMB/CIFS network file store for noy-db. Works against Windows file servers, NAS devices (Synology/QNAP/Netgear), and corporate shared drives via NTLM or Kerberos auth \u2014 no OS mount required.",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
@@ -42,8 +42,8 @@
     "@noy-db/hub": "^0.6.0-pre.0 || ^0.7.0-pre.0 || ^0.7.1-pre.0 || ^0.8.0-pre.0 || ^0.9.0-pre.1"
   },
   "devDependencies": {
-    "@noy-db/hub": "0.9.0-pre.1",
-    "@noy-db/ports": "0.9.0-pre.1",
+    "@noy-db/hub": "0.9.0-pre.2",
+    "@noy-db/ports": "0.9.0-pre.2",
     "@types/node": "^22.0.0"
   },
   "keywords": [
