@@ -6,6 +6,7 @@
   "gates": [
     "architecture",
     "versions-uniform",
+    "declared-deps",
     "codemod-rows",
     "check-license",
     "prose-examples",
