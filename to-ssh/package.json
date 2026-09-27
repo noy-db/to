@@ -1,7 +1,7 @@
 {
   "name": "@noy-db/to-ssh",
-  "version": "0.9.0-pre.0",
-  "description": "SSH/SFTP store for noy-db \u2014 remote encrypted document storage over SSH using public-key auth. Any Linux/macOS server with sshd running becomes a noy-db backend; leverages existing ~/.ssh keys or ssh-agent. Key-only auth (no passwords).",
+  "version": "0.9.0",
+  "description": "SSH/SFTP store for noy-db — remote encrypted document storage over SSH using public-key auth. Any Linux/macOS server with sshd running becomes a noy-db backend; leverages existing ~/.ssh keys or ssh-agent. Key-only auth (no passwords).",
   "license": "Apache-2.0",
   "author": "vLannaAi <vicio@lanna.ai>",
   "homepage": "https://github.com/noy-db/to/tree/main/to-ssh#readme",
@@ -47,8 +47,8 @@
     }
   },
   "devDependencies": {
-    "@noy-db/hub": "0.9.0-pre.2",
-    "@noy-db/ports": "0.9.0-pre.2",
+    "@noy-db/hub": "0.9.0",
+    "@noy-db/ports": "0.9.0",
     "@types/node": "^22.0.0"
   },
   "keywords": [
