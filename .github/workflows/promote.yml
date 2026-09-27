@@ -1,0 +1,40 @@
+# Thin caller. Moves a dist-tag onto an already-published version for every
+# publishable package here.
+#
+# ⛔ The rail refuses unless EVERY name already carries the version, because a
+# partial move splits the line across two versions under one dist-tag — and the
+# half that moved is the half a bare `npm install` serves.
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The already-published version to point the dist-tag at.
+        required: true
+      tag:
+        description: Git tag whose tree lists the packages. Blank = v<version>.
+        required: false
+        default: ''
+      dist_tag:
+        description: Which dist-tag to move.
+        required: false
+        default: latest
+      dry_run:
+        description: Print what would move and write nothing.
+        type: boolean
+        default: false
+
+jobs:
+  promote:
+    uses: noy-db/.github/.github/workflows/promote.yml@v2
+    with:
+      version: ${{ inputs.version }}
+      tag: ${{ inputs.tag }}
+      dist_tag: ${{ inputs.dist_tag }}
+      # ⚠️ Deliberately tolerant of BOTH shapes. A workflow_dispatch boolean
+      # reaches `inputs` as a real boolean, but stringifies through some contexts,
+      # and a bare `== 'true'` would make dry_run silently never fire — a flag that
+      # quietly does nothing is worse than no flag.
+      dry_run: ${{ inputs.dry_run == true || inputs.dry_run == 'true' }}
+    secrets: inherit
