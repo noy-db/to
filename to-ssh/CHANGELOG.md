@@ -1,5 +1,9 @@
 # @noy-db/to-ssh
 
+## 0.10.0-pre.0
+
+Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.
+
 ## 0.9.0
 
 Lockstep bump to 0.9.0; no package-level change in this release. See `@noy-db/hub` 0.9.0 for the line's notes.
