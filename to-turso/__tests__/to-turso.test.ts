@@ -9,6 +9,8 @@ interface Row {
   by?: string | null; tier?: number | null; elevated_by?: string | null; det?: string | null; del?: number | null
 }
 
+const hexOf = (s: string) => Buffer.from(s, 'utf8').toString('hex').toUpperCase()
+
 function mockLibsql(): LibsqlClient & { rowMap: Map<string, Row> } {
   const rowMap = new Map<string, Row>()
   const key = (v: string, c: string, i: string) => `${v}\x00${c}\x00${i}`
@@ -60,31 +62,32 @@ function mockLibsql(): LibsqlClient & { rowMap: Map<string, Row> } {
       const row = rowMap.get(key(vault, collection, id))
       return { rows: row ? [{ v: row.v }] : [] }
     }
-    if (normalized.startsWith('SELECT ID FROM')) {
+    if (normalized.startsWith('SELECT HEX(ID) AS ID_HEX FROM')) {
       const [vault, collection] = args as [string, string]
       return {
         rows: [...rowMap.values()]
           .filter(r => r.vault === vault && r.collection === collection)
           .sort((a, b) => a.id.localeCompare(b.id))
-          .map(r => ({ id: r.id })),
+          .map(r => ({ id_hex: hexOf(r.id) })),
       }
     }
-    if (normalized.startsWith('SELECT ID, V, TS, ENV, IV, DATA, BY, TIER, ELEVATED_BY, DET FROM')) {
+    if (normalized.startsWith('SELECT HEX(ID) AS ID_HEX, V, TS, ENV, IV, DATA, BY, TIER, ELEVATED_BY, DET FROM')) {
       const [vault, collection, afterId, limit] = args as [string, string, string, number]
       const matched = [...rowMap.values()]
         .filter(r => r.vault === vault && r.collection === collection && r.id > afterId)
         .sort((a, b) => a.id.localeCompare(b.id))
         .slice(0, limit)
+        .map(r => ({ ...r, id_hex: hexOf(r.id) }))
       return { rows: matched }
     }
-    if (normalized.startsWith('SELECT * FROM')) {
+    if (normalized.startsWith('SELECT * FROM') || normalized.startsWith('SELECT *, HEX(ID) AS ID_HEX FROM')) {
       if (args.length === 3) {
         const [vault, collection, id] = args as [string, string, string]
         const row = rowMap.get(key(vault, collection, id))
         return { rows: row ? [row] : [] }
       }
       const [vault] = args as [string]
-      return { rows: [...rowMap.values()].filter(r => r.vault === vault) }
+      return { rows: [...rowMap.values()].filter(r => r.vault === vault).map(r => ({ ...r, id_hex: hexOf(r.id) })) }
     }
     throw new Error(`mock libsql: unsupported SQL: ${normalized}`)
   }

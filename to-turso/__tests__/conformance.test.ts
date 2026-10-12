@@ -37,3 +37,27 @@ describe('to-turso saveAll without batch() (sequential fallback)', () => {
     expect((await store.get('v', '_keyring', 'alice'))?._data).toBe('key')
   })
 })
+
+// family#174 — an id holding a NUL (hub's partitioned sequence and period keys)
+// must come back whole from list, loadAll and listPage, and the listPage cursor
+// must step past it. node:sqlite cuts a TEXT read at the NUL, which is why ids
+// are read as hex(id). Kept here because the pinned kit predates the case.
+describe('to-turso NUL-bearing ids (family#174)', () => {
+  const env = (v: number) => ({ _noydb: 1 as const, _v: v, _ts: new Date(0).toISOString(), _iv: 'aaaa', _data: `d${v}` })
+  const ids = ['a', 'a\0x', 'a\0y', 'b\0z/EU']
+
+  it('round-trips through list, loadAll and a paged listPage', async () => {
+    const store = toTurso({ client: libsqlOverNodeSqlite() })
+    for (const [i, id] of ids.entries()) await store.put('v', 'c', id, env(i + 1))
+    expect(await store.list('v', 'c')).toEqual(ids)
+    expect(Object.keys((await store.loadAll('v')).c!)).toEqual(ids)
+    const seen: string[] = []
+    let cursor: string | undefined
+    do {
+      const page = await store.listPage!('v', 'c', cursor, 1)
+      seen.push(...page.items.map(x => x.id))
+      cursor = page.nextCursor ?? undefined
+    } while (cursor !== undefined)
+    expect(seen).toEqual(ids)
+  })
+})
