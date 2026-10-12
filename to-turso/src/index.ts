@@ -78,8 +78,21 @@ export interface TursoStoreOptions {
   readonly clockUncertaintyMs?: number
 }
 
+/**
+ * `tableName` is interpolated into every statement — identifiers cannot be
+ * bound as parameters — and it can arrive from a descriptor's
+ * `address.table`, which travels inside a pod. So only a plain identifier is
+ * accepted (family#148); that also keeps `idx_${tableName}_…` a valid name.
+ */
+function assertTableName(tableName: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
+    throw new Error(`@noy-db/to-turso: tableName must match /^[A-Za-z_][A-Za-z0-9_]*$/, got ${JSON.stringify(tableName)}`)
+  }
+}
+
 export function toTurso(options: TursoStoreOptions): NoydbStore {
   const { client: staticClient, tableName = 'noydb_envelopes', autoMigrate = true } = options
+  assertTableName(tableName)
   const clockUncertaintyMs = options.clockUncertaintyMs ?? 1_000
   let schemaReady: Promise<void> | null = null
 

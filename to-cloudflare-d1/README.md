@@ -18,7 +18,7 @@ Cloudflare D1 adapter for noy-db — SQLite at the edge, running inside Cloudfla
 
 ## Status
 
-**Pre-release** (`0.1.0-pre.1`). API may change before `1.0`.
+**Pre-release.** API may change before `1.0`.
 
 ## Documentation
 

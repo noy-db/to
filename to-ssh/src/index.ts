@@ -94,6 +94,32 @@ function pathJoin(...parts: string[]): string {
     .join('/')
 }
 
+/**
+ * Segment shape, the rule ruled on family#133 and applied here for family#148.
+ * Path joining here strips only edge slashes, so a `..` segment reached the
+ * server and resolved outside the vault — and `saveAll` unlinks whatever a
+ * listing names.
+ *
+ * `vault` and `collection` are single names. ⛔ An `id` MAY carry `/`: hub
+ * emits `_idx/<field>/<recordId>` ids for persisted index side-cars, so each
+ * `/`-separated component is checked instead of refusing the separator.
+ */
+function isName(value: string): boolean {
+  return value !== '' && value !== '.' && value !== '..' && !/[/\\\0]/.test(value)
+}
+
+function assertName(value: string, what: string): void {
+  if (!isName(value)) {
+    throw new Error(`@noy-db/to-ssh: ${what} must be a single path segment, got ${JSON.stringify(value)}`)
+  }
+}
+
+function assertId(id: string): void {
+  if (/[\\\0]/.test(id) || id.split('/').some(p => p === '' || p === '.' || p === '..')) {
+    throw new Error(`@noy-db/to-ssh: record id must not contain a backslash, NUL, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
+  }
+}
+
 function decode(bytes: Uint8Array | Buffer): string {
   if (typeof Buffer !== 'undefined' && bytes instanceof Buffer) {
     return bytes.toString('utf-8')
@@ -105,10 +131,18 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
   const { sftp, remotePath = 'noydb', name = 'ssh' } = options
 
   const root = remotePath.replace(/^\/+|\/+$/g, '')
-  const recordPath = (v: string, c: string, id: string): string =>
-    '/' + pathJoin(root, v, c, `${id}.json`)
-  const collPath = (v: string, c: string): string => '/' + pathJoin(root, v, c)
-  const vaultPath = (v: string): string => '/' + pathJoin(root, v)
+  const vaultPath = (v: string): string => {
+    assertName(v, 'vault')
+    return '/' + pathJoin(root, v)
+  }
+  const collPath = (v: string, c: string): string => {
+    assertName(c, 'collection')
+    return '/' + pathJoin(vaultPath(v), c)
+  }
+  const recordPath = (v: string, c: string, id: string): string => {
+    assertId(id)
+    return '/' + pathJoin(collPath(v, c), `${id}.json`)
+  }
 
   async function ensureDir(path: string): Promise<void> {
     try {
@@ -155,14 +189,17 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
         }
       }
       const tmp = `${target}.tmp`
-      await ensureDir(collPath(vault, collection))
+      // The record's own parent, not the collection: an id may carry `/` (family#133).
+      await ensureDir(target.slice(0, target.lastIndexOf('/')))
       await sftp.writeFile(tmp, JSON.stringify(envelope))
       await sftp.rename(tmp, target)
     },
 
     async delete(vault, collection, id) {
+      // Outside the try: a refused segment must throw, not read as "already gone".
+      const target = recordPath(vault, collection, id)
       try {
-        await sftp.unlink(recordPath(vault, collection, id))
+        await sftp.unlink(target)
       } catch {
         // Already gone — delete is idempotent from the caller's POV.
       }
@@ -173,6 +210,7 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
       return entries
         .filter(e => e.endsWith('.json') && !e.endsWith('.tmp'))
         .map(e => e.slice(0, -'.json'.length))
+        .filter(isName)
         .sort()
     },
 
@@ -180,7 +218,7 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
       const snap: VaultSnapshot = {}
       const collections = await safeReaddir(vaultPath(vault))
       for (const collection of collections) {
-        if (collection.startsWith('_')) continue
+        if (!isName(collection) || collection.startsWith('_')) continue
         const ids = await store.list(vault, collection)
         const bucket: Record<string, EncryptedEnvelope> = {}
         for (const id of ids) {
@@ -196,8 +234,11 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
       // Delete the vault tree first to mirror the semantics of other stores.
       const existingCollections = await safeReaddir(vaultPath(vault))
       for (const collection of existingCollections) {
+        // A listing may name `.`/`..`; unlinking beneath those leaves the vault.
+        if (!isName(collection)) continue
         const ids = await safeReaddir(collPath(vault, collection))
         for (const id of ids) {
+          if (!isName(id)) continue
           await sftp
             .unlink('/' + pathJoin(root, vault, collection, id))
             .catch(() => undefined)

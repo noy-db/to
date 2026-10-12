@@ -71,8 +71,21 @@ export interface MysqlStoreOptions {
   readonly autoMigrate?: boolean
 }
 
+/**
+ * `tableName` is interpolated into every statement — identifiers cannot be
+ * bound as parameters — and it can arrive from a descriptor's
+ * `address.table`, which travels inside a pod. So only a plain identifier is
+ * accepted (family#148); that also keeps `idx_${tableName}_…` a valid name.
+ */
+function assertTableName(tableName: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
+    throw new Error(`@noy-db/to-mysql: tableName must match /^[A-Za-z_][A-Za-z0-9_]*$/, got ${JSON.stringify(tableName)}`)
+  }
+}
+
 export function toMysql(options: MysqlStoreOptions): NoydbStore {
   const { client, tableName = 'noydb_envelopes', autoMigrate = true } = options
+  assertTableName(tableName)
   let schemaReady: Promise<void> | null = null
 
   async function runDDL(sql: string, q: MysqlClient = client): Promise<void> {
