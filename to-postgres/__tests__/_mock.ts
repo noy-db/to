@@ -9,8 +9,7 @@ export interface Row { vault: string; collection: string; id: string; v: number;
  * to-postgres.test.ts so the conformance suite (#26) can reuse it —
  * importing a *.test.ts file would re-run its describe blocks.
  */
-export function mockClient(): PostgresClient & { rows: Map<string, Row> } {
-  const rows = new Map<string, Row>()
+export function mockClient(rows: Map<string, Row> = new Map()): PostgresClient & { rows: Map<string, Row> } {
   const key = (v: string, c: string, i: string) => `${v}\x00${c}\x00${i}`
   let inTx = false
   let txSnapshot: Map<string, Row> | null = null
@@ -93,4 +92,39 @@ export function mockClient(): PostgresClient & { rows: Map<string, Row> } {
   }
 
   return { query, rows }
+}
+
+/**
+ * In-memory mock of a pg `Pool`. Every connection shares one row map but
+ * holds its own transaction state, and `pool.query()` runs each statement
+ * on a fresh connection — which is pg.Pool's real contract, and why a
+ * BEGIN / DELETE / ROLLBACK sent through `pool.query()` is three
+ * unrelated sessions (noy-db/family#144). `checkedOut` counts connections
+ * taken with `connect()` and not yet released.
+ */
+export function mockPool(): PostgresClient & {
+  rows: Map<string, Row>
+  connect(): Promise<PostgresClient & { release(): void }>
+  totalCount: number
+  checkedOut: number
+} {
+  const rows = new Map<string, Row>()
+  const pool = {
+    rows,
+    totalCount: 0,
+    checkedOut: 0,
+    query: <T>(sql: string, params?: readonly unknown[]) => mockClient(rows).query<T>(sql, params),
+    async connect() {
+      pool.checkedOut++
+      const conn = mockClient(rows)
+      let released = false
+      return {
+        query: conn.query,
+        release() {
+          if (!released) { released = true; pool.checkedOut-- }
+        },
+      }
+    },
+  }
+  return pool
 }

@@ -10,7 +10,8 @@
  * (the `mysql2` convention) works:
  *
  *   - `mysql2/promise` — `createPool()` or `createConnection()`
- *   - PlanetScale's serverless driver
+ *   - PlanetScale's serverless driver — through a shim; `saveAll`/`tx` are
+ *     atomic only if the shim keeps one session across calls
  *   - Any pool wrapper that preserves the mysql2 Promise interface
  *
  * ## Capabilities
@@ -18,7 +19,7 @@
  * | Capability  | Value |
  * |-------------|-------|
  * | `casAtomic` | `true` — `UPDATE … WHERE v = ?` + row-count check |
- * | `txAtomic`  | `true` — `START TRANSACTION … COMMIT` |
+ * | `txAtomic`  | `true` — `START TRANSACTION … COMMIT` on one connection (checked out of a pool) |
  * | `listPage`  | ✓ — keyset paging by `id` |
  * | `ping`      | ✓ — `SELECT 1` round-trip |
  *
@@ -43,6 +44,25 @@ export interface MysqlClient {
   query?<T = unknown>(sql: string): Promise<[T[], unknown]>
 }
 
+/** A connection checked out of a pool (mysql2 `PromisePoolConnection`). */
+export interface MysqlPoolConnection extends MysqlClient {
+  release(): void
+}
+
+/**
+ * Duck-typed subset of mysql2 `PromisePool`. `pool.execute()` runs each
+ * statement on whichever connection is free, so a transaction must run on
+ * one connection taken with `getConnection()`. A plain `Connection` has no
+ * `getConnection`, which is what tells the two apart.
+ */
+export interface MysqlPool extends MysqlClient {
+  getConnection(): Promise<MysqlPoolConnection>
+}
+
+function isPool(client: MysqlClient): client is MysqlPool {
+  return typeof (client as Partial<MysqlPool>).getConnection === 'function'
+}
+
 export interface MysqlStoreOptions {
   readonly client: MysqlClient
   /** Custom table name. Default `'noydb_envelopes'`. */
@@ -55,9 +75,33 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
   const { client, tableName = 'noydb_envelopes', autoMigrate = true } = options
   let schemaReady: Promise<void> | null = null
 
-  async function runDDL(sql: string): Promise<void> {
-    if (client.query) await client.query(sql)
-    else await client.execute(sql)
+  async function runDDL(sql: string, q: MysqlClient = client): Promise<void> {
+    if (q.query) await q.query(sql)
+    else await q.execute(sql)
+  }
+
+  /**
+   * Runs `fn` between START TRANSACTION and COMMIT on ONE connection — a
+   * pool's checked-out connection, or the given client itself (already
+   * connection-pinned). Through `pool.execute()` each statement could land on
+   * a different connection: the DELETE autocommits and ROLLBACK is a no-op
+   * (family#144).
+   */
+  async function inTransaction(fn: (q: MysqlClient) => Promise<void>): Promise<void> {
+    const pinned = isPool(client) ? await client.getConnection() : null
+    const q = pinned ?? client
+    try {
+      await runDDL('START TRANSACTION', q)
+      try {
+        await fn(q)
+        await runDDL('COMMIT', q)
+      } catch (err) {
+        try { await runDDL('ROLLBACK', q) } catch { /* keep the original error */ }
+        throw err
+      }
+    } finally {
+      pinned?.release()
+    }
   }
 
   async function ensureSchema(): Promise<void> {
@@ -81,6 +125,7 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
   }
 
   async function upsert(
+    q: MysqlClient,
     vault: string,
     collection: string,
     id: string,
@@ -89,7 +134,7 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
   ): Promise<void> {
     await ensureSchema()
     if (expectedVersion !== undefined) {
-      const [rows] = await client.execute<{ v: number }>(
+      const [rows] = await q.execute<{ v: number }>(
         `SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
         [vault, collection, id],
       )
@@ -98,7 +143,7 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
         throw new ConflictError(Number(current.v), `Version conflict: expected ${expectedVersion}, found ${current.v}`)
       }
     }
-    await client.execute(
+    await q.execute(
       `INSERT INTO ${tableName} (vault, collection, id, v, envelope)
        VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE v = VALUES(v), envelope = VALUES(envelope)`,
@@ -129,7 +174,7 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
     },
 
     async put(vault, collection, id, envelope, expectedVersion) {
-      await upsert(vault, collection, id, envelope, expectedVersion)
+      await upsert(client, vault, collection, id, envelope, expectedVersion)
     },
 
     async delete(vault, collection, id) {
@@ -170,19 +215,14 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
 
     async saveAll(vault, data) {
       await ensureSchema()
-      await runDDL('START TRANSACTION')
-      try {
-        await client.execute(`DELETE FROM ${tableName} WHERE vault = ?`, [vault])
+      await inTransaction(async (q) => {
+        await q.execute(`DELETE FROM ${tableName} WHERE vault = ?`, [vault])
         for (const [collection, recs] of Object.entries(data)) {
           for (const [id, envelope] of Object.entries(recs)) {
-            await upsert(vault, collection, id, envelope)
+            await upsert(q, vault, collection, id, envelope)
           }
         }
-        await runDDL('COMMIT')
-      } catch (err) {
-        await runDDL('ROLLBACK')
-        throw err
-      }
+      })
     },
 
     async ping() {
@@ -215,15 +255,14 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
 
     async tx(ops: readonly TxOp[]) {
       await ensureSchema()
-      await runDDL('START TRANSACTION')
-      try {
+      await inTransaction(async (q) => {
         for (const op of ops) {
           if (op.type === 'put') {
             if (!op.envelope) throw new Error(`tx put op missing envelope for ${op.id}`)
-            await upsert(op.vault, op.collection, op.id, op.envelope, op.expectedVersion)
+            await upsert(q, op.vault, op.collection, op.id, op.envelope, op.expectedVersion)
           } else {
             if (op.expectedVersion !== undefined) {
-              const [rows] = await client.execute<{ v: number }>(
+              const [rows] = await q.execute<{ v: number }>(
                 `SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
                 [op.vault, op.collection, op.id],
               )
@@ -231,17 +270,13 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
                 throw new ConflictError(Number(rows[0].v))
               }
             }
-            await client.execute(
+            await q.execute(
               `DELETE FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
               [op.vault, op.collection, op.id],
             )
           }
         }
-        await runDDL('COMMIT')
-      } catch (err) {
-        await runDDL('ROLLBACK')
-        throw err
-      }
+      })
     },
   }
 

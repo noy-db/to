@@ -8,8 +8,7 @@ export interface Row { vault: string; collection: string; id: string; v: number;
  * patterns the store emits and answers from a Map. Extracted from
  * to-mysql.test.ts so the conformance suite (#26) can reuse it.
  */
-export function mockClient(): MysqlClient & { rowMap: Map<string, Row> } {
-  const rowMap = new Map<string, Row>()
+export function mockClient(rowMap: Map<string, Row> = new Map()): MysqlClient & { rowMap: Map<string, Row> } {
   const key = (v: string, c: string, i: string) => `${v}\x00${c}\x00${i}`
   // Transaction fidelity (mirrors the to-postgres mock): START TRANSACTION
   // snapshots the map so ROLLBACK actually restores pre-transaction state —
@@ -96,4 +95,40 @@ export function mockClient(): MysqlClient & { rowMap: Map<string, Row> } {
   }
 
   return { execute, rowMap }
+}
+
+/**
+ * In-memory mock of a mysql2 `PromisePool`. Every connection shares one
+ * row map but holds its own transaction state, and `pool.execute()` runs
+ * each statement on a fresh connection — mysql2's real pool contract, and
+ * why START TRANSACTION / DELETE / ROLLBACK sent through the pool are
+ * unrelated sessions (noy-db/family#144). `checkedOut` counts connections
+ * taken with `getConnection()` and not yet released.
+ */
+export function mockPool(): MysqlClient & {
+  rowMap: Map<string, Row>
+  getConnection(): Promise<MysqlClient & { release(): void }>
+  checkedOut: number
+} {
+  const rowMap = new Map<string, Row>()
+  const run = <T>(sql: string, params?: readonly unknown[]) => mockClient(rowMap).execute<T>(sql, params)
+  const pool = {
+    rowMap,
+    checkedOut: 0,
+    execute: run,
+    query: <T>(sql: string) => run<T>(sql),
+    async getConnection() {
+      pool.checkedOut++
+      const conn = mockClient(rowMap)
+      let released = false
+      return {
+        execute: conn.execute,
+        query: <T>(sql: string) => conn.execute<T>(sql),
+        release() {
+          if (!released) { released = true; pool.checkedOut-- }
+        },
+      }
+    },
+  }
+  return pool
 }
