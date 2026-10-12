@@ -100,10 +100,30 @@ function assertName(value: string, what: string): void {
 }
 
 function assertId(id: string): void {
-  if (/[\\\0]/.test(id) || id.split('/').some(p => p === '' || p === '.' || p === '..')) {
-    throw new Error(`@noy-db/to-smb: record id must not contain a backslash, NUL, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
+  // A NUL is no longer refused (family#174): hub joins partitioned sequence and
+  // period keys with `\x00`, so it is ENCODED instead (see `encodeIdComponent`).
+  if (id.includes('\\') || id.split('/').some(p => p === '' || p === '.' || p === '..')) {
+    throw new Error(`@noy-db/to-smb: record id must not contain a backslash, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
   }
 }
+
+/**
+ * Reversible per-component id encoding (family#174), the same codec as
+ * to-file's. `%` is escaped FIRST or `a%00b` and `a\x00b` share one file; the
+ * scope is deliberately `%` and NUL only. Applied per `/` component, since `/`
+ * maps to a directory.
+ */
+function encodeIdComponent(part: string): string {
+  return part.replace(/%/g, '%25').replace(/\0/g, '%00')
+}
+
+/** Exact inverse of {@link encodeIdComponent}, in ONE pass (`%2500` → `%00`). */
+function decodeIdComponent(part: string): string {
+  return part.replace(/%(25|00)/g, (_m, code: string) => (code === '25' ? '%' : '\0'))
+}
+
+const encodeId = (id: string): string => id.split('/').map(encodeIdComponent).join('/')
+const decodeId = (id: string): string => id.split('/').map(decodeIdComponent).join('/')
 
 function decode(bytes: Uint8Array | Buffer): string {
   if (typeof Buffer !== 'undefined' && bytes instanceof Buffer) return bytes.toString('utf-8')
@@ -124,8 +144,16 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
   }
   const recordPath = (v: string, c: string, id: string): string => {
     assertId(id)
-    return join(collPath(v, c), `${id}.json`)
+    return join(collPath(v, c), `${encodeId(id)}.json`)
   }
+  /**
+   * The pre-family#174 path: encoding `%` moved every existing id containing
+   * one, so reads and deletes also try the raw name. ⛔ Null whenever the raw
+   * name is ANOTHER id's encoded name (`a%00b` is where `a\x00b` lives), or a
+   * fallback would read or delete that record. Null too when nothing moved.
+   */
+  const legacyRecordPath = (v: string, c: string, id: string): string | null =>
+    encodeId(decodeId(id)) === id ? null : join(collPath(v, c), `${id}.json`)
 
   async function ensureDir(path: string): Promise<void> {
     // SMB mkdir is not always recursive — walk parents.
@@ -158,7 +186,7 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
     const ids: string[] = []
     for (const e of await safeReaddir(dir)) {
       if (!isName(e) || e.endsWith('.tmp')) continue
-      if (e.endsWith('.json')) ids.push(prefix + e.slice(0, -'.json'.length))
+      if (e.endsWith('.json')) ids.push(decodeId(prefix + e.slice(0, -'.json'.length)))
       else ids.push(...await listIds(join(dir, e), `${prefix}${e}/`))
     }
     return ids
@@ -172,7 +200,9 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
     },
 
     async get(vault, collection, id) {
-      const bytes = await client.readFile(recordPath(vault, collection, id))
+      let bytes = await client.readFile(recordPath(vault, collection, id))
+      const legacy = bytes === null ? legacyRecordPath(vault, collection, id) : null
+      if (legacy !== null) bytes = await client.readFile(legacy)
       if (bytes === null) return null
       return JSON.parse(decode(bytes)) as EncryptedEnvelope
     },
@@ -184,15 +214,11 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
       // behaviour: @noy-db/to-file (found by the conformance suite, #26).
       const target = recordPath(vault, collection, id)
       if (expectedVersion !== undefined) {
-        const existing = await client.readFile(target)
-        if (existing !== null) {
-          const current = (JSON.parse(new TextDecoder().decode(existing)) as EncryptedEnvelope)._v
-          if (current !== expectedVersion) {
-            throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
-          }
-        } else if (expectedVersion !== 0) {
-          // family#147 — an absent record is at version 0, so `N > 0` conflicts.
-          throw new ConflictError(0, `Version conflict: expected ${expectedVersion}, found no record`)
+        // family#147 — an absent record is at version 0: `0` creates, `N > 0` conflicts.
+        // Read through the legacy fallback (family#174), or a pre-encoding record reads as absent.
+        const current = (await store.get(vault, collection, id))?._v ?? 0
+        if (current !== expectedVersion) {
+          throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
         }
       }
       // A per-write temp name: two writers sharing `${target}.tmp` clobber each
@@ -202,11 +228,17 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
       await ensureDir(target.slice(0, target.lastIndexOf('/')))
       await client.writeFile(tmp, JSON.stringify(envelope))
       await client.rename(tmp, target)
+      // Drop a pre-family#174 copy, so an id never lists twice.
+      const legacy = legacyRecordPath(vault, collection, id)
+      if (legacy !== null) await client.unlink(legacy).catch(() => undefined)
     },
 
     async delete(vault, collection, id) {
       // Outside the try: a refused segment must throw, not read as "already gone".
       const target = recordPath(vault, collection, id)
+      const legacy = legacyRecordPath(vault, collection, id)
+      // A pre-family#174 record under its raw name goes too, or it would resurface.
+      if (legacy !== null) await client.unlink(legacy).catch(() => undefined)
       try {
         await client.unlink(target)
       } catch {

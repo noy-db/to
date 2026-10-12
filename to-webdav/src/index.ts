@@ -76,6 +76,23 @@ export interface WebDAVStoreOptions {
   readonly eagerMkcol?: boolean
 }
 
+/**
+ * Reversible per-component id encoding (family#174), the same codec as
+ * to-file's. `%` is escaped FIRST or `a%00b` and `a\x00b` share one resource;
+ * the scope is deliberately `%` and NUL only. Applied per `/` component, since
+ * `/` maps to a child collection. URL-encoding is a separate, outer layer.
+ */
+function encodeIdComponent(part: string): string {
+  return part.replace(/%/g, '%25').replace(/\0/g, '%00')
+}
+
+/** Exact inverse of {@link encodeIdComponent}, in ONE pass (`%2500` → `%00`). */
+function decodeIdComponent(part: string): string {
+  return part.replace(/%(25|00)/g, (_m, code: string) => (code === '25' ? '%' : '\0'))
+}
+
+const decodeId = (id: string): string => id.split('/').map(decodeIdComponent).join('/')
+
 export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
   const {
     baseUrl: rawBase,
@@ -116,18 +133,34 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
    * becomes its own path segment, so a server stores it as nested collections
    * rather than receiving an encoded `%2F` many servers refuse. A component that
    * is empty, `.` or `..` would let the URL resolve outside the collection, so
-   * it is refused.
+   * it is refused. A NUL is not refused but ENCODED (family#174): each
+   * returned component has been through `encodeIdComponent`.
    */
   function idSegments(id: string): string[] {
     const parts = id.split('/')
-    if (/[\\\0]/.test(id) || parts.some(p => p === '' || p === '.' || p === '..')) {
-      throw new Error(`@noy-db/to-webdav: record id must not contain a backslash, NUL, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
+    if (id.includes('\\') || parts.some(p => p === '' || p === '.' || p === '..')) {
+      throw new Error(`@noy-db/to-webdav: record id must not contain a backslash, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
     }
-    return parts
+    return parts.map(encodeIdComponent)
   }
 
   function urlFor(vault: string, collection: string, id: string): string {
-    const parts = idSegments(id)
+    return urlForParts(vault, collection, idSegments(id))
+  }
+
+  /**
+   * The pre-family#174 URL: encoding `%` moved every existing id containing
+   * one, so reads and deletes also try the raw name. ⛔ Null whenever the raw
+   * name is ANOTHER id's encoded name (`a%00b` is where `a\x00b` lives), or a
+   * fallback would read or delete that record. Null too when nothing moved.
+   */
+  function legacyUrlFor(vault: string, collection: string, id: string): string | null {
+    idSegments(id) // validates the id; the raw components are what moved
+    const raw = id.split('/')
+    return raw.every(p => encodeIdComponent(decodeIdComponent(p)) === p) ? null : urlForParts(vault, collection, raw)
+  }
+
+  function urlForParts(vault: string, collection: string, parts: string[]): string {
     const segments = [prefix, vault, collection, ...parts.slice(0, -1), `${parts[parts.length - 1]}.json`]
       .filter(Boolean)
       .map(encodeURIComponent)
@@ -195,7 +228,8 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
       const hrefPath = href.replace(/\/+$/, '')
       if (hrefPath === selfPath) continue
       const filename = hrefPath.split('/').pop()!
-      if (filename.endsWith('.json')) ids.push(idPrefix + filename.slice(0, -'.json'.length))
+      // The href is URL-decoded above; the id codec is undone second (family#174).
+      if (filename.endsWith('.json')) ids.push(decodeId(idPrefix + filename.slice(0, -'.json'.length)))
       // A child collection holds the rest of a `/`-bearing id (family#133).
       else if (href.endsWith('/')) ids.push(...await listChildren(vault, collection, [...sub, filename]))
     }
@@ -242,10 +276,12 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
     },
 
     async get(vault, collection, id) {
-      const res = await fetchImpl(urlFor(vault, collection, id), {
+      let res = await fetchImpl(urlFor(vault, collection, id), {
         method: 'GET',
         headers: await requestHeaders(),
       })
+      const legacy = res.status === 404 ? legacyUrlFor(vault, collection, id) : null
+      if (legacy !== null) res = await fetchImpl(legacy, { method: 'GET', headers: await requestHeaders() })
       if (res.status === 404) return null
       if (!res.ok) throw new Error(`WebDAV GET failed: ${res.status}`)
       const text = await res.text()
@@ -278,9 +314,15 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
         res = await putOnce(vault, collection, id, body)
       }
       if (!res.ok) throw new Error(`WebDAV PUT failed: ${res.status}`)
+      // Drop a pre-family#174 copy, so an id never lists twice.
+      const legacy = legacyUrlFor(vault, collection, id)
+      if (legacy !== null) await fetchImpl(legacy, { method: 'DELETE', headers: await requestHeaders() })
     },
 
     async delete(vault, collection, id) {
+      // A pre-family#174 record under its raw name goes too, or it would resurface.
+      const legacy = legacyUrlFor(vault, collection, id)
+      if (legacy !== null) await fetchImpl(legacy, { method: 'DELETE', headers: await requestHeaders() })
       const res = await fetchImpl(urlFor(vault, collection, id), {
         method: 'DELETE',
         headers: await requestHeaders(),

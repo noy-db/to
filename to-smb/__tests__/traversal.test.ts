@@ -6,7 +6,8 @@ import { mockSmb } from './_mock.js'
 
 // noy-db/family#148 — the segment rule ruled on family#133: vault and
 // collection are single names; an id may carry '/', but no component of it
-// may be empty, '.' or '..'; no backslash or NUL anywhere.
+// may be empty, '.' or '..'; no backslash anywhere, and no NUL in a vault or
+// collection. A NUL in an id is ENCODED, not refused (family#174).
 
 function env(v: number): EncryptedEnvelope {
   return {
@@ -16,7 +17,7 @@ function env(v: number): EncryptedEnvelope {
 }
 
 const badNames = ['', '.', '..', 'a/b', 'a\\b', 'a\0b']
-const badIds = ['', '.', '..', '../x', 'a/../b', '/x', 'x/', 'a//b', 'a\\b', 'a\0b']
+const badIds = ['', '.', '..', '../x', 'a/../b', '/x', 'x/', 'a//b', 'a\\b']
 
 describe('@noy-db/to-smb path segments', () => {
   it.each(badNames)('refuses vault %j', async (vault) => {
@@ -56,5 +57,40 @@ describe('@noy-db/to-smb path segments', () => {
     await handle.writeFile('noydb/stray.json', '{}')
     await store.saveAll('v1', {})
     expect(handle.files.has('noydb/stray.json')).toBe(true)
+  })
+
+  it('encodes `%` and NUL per component, so `a\\0b`, `a%00b` and `a%2500b` stay three records (family#174)', async () => {
+    const handle = mockSmb()
+    const store = toSmb({ smb: handle })
+    const ids = ['a\0b', 'a%00b', 'a%2500b', 'p\0q/r%s']
+    for (const [i, id] of ids.entries()) await store.put('v', 'c', id, env(i + 1))
+    for (const [i, id] of ids.entries()) expect(await store.get('v', 'c', id)).toEqual(env(i + 1))
+    expect(await store.list('v', 'c')).toEqual([...ids].sort())
+    expect(Object.keys((await store.loadAll('v')).c!).sort()).toEqual([...ids].sort())
+    expect([...handle.files.keys()].sort()).toEqual(
+      ['a%00b', 'a%2500b', 'a%252500b', 'p%00q/r%25s'].map(n => `noydb/v/c/${n}.json`).sort(),
+    )
+    // `a%00b` on disk is where `a\0b` lives: dropping `a%00b` must not take it along.
+    await store.delete('v', 'c', 'a%00b')
+    expect(await store.get('v', 'c', 'a%00b')).toBeNull()
+    expect(await store.get('v', 'c', 'a\0b')).toEqual(env(1))
+  })
+
+  it('still reads, lists, deletes and prunes a pre-encoding record whose id holds a `%` (family#174)', async () => {
+    const handle = mockSmb()
+    const store = toSmb({ smb: handle })
+    await handle.writeFile('noydb/v/c/x%3Ay.json', JSON.stringify(env(1)))
+    await handle.writeFile('noydb/v/c/z%3Aw.json', JSON.stringify(env(2)))
+    expect(await store.get('v', 'c', 'x%3Ay')).toEqual(env(1))
+    expect(await store.list('v', 'c')).toEqual(['x%3Ay', 'z%3Aw'])
+    expect((await store.loadAll('v')).c).toEqual({ 'x%3Ay': env(1), 'z%3Aw': env(2) })
+    await store.delete('v', 'c', 'x%3Ay')
+    expect(await store.get('v', 'c', 'x%3Ay')).toBeNull()
+    // A CAS write sees the legacy version, and the id then lists once.
+    await store.put('v', 'c', 'z%3Aw', env(3), 2)
+    expect(await store.get('v', 'c', 'z%3Aw')).toEqual(env(3))
+    expect(await store.list('v', 'c')).toEqual(['z%3Aw'])
+    await store.saveAll('v', { c: {} })
+    expect([...handle.files.keys()]).toEqual([])
   })
 })
