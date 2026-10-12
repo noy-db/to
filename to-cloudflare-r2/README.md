@@ -9,7 +9,7 @@ Part of [**`@noy-db/hub`**](https://www.npmjs.com/package/@noy-db/hub) — the z
 ## Install
 
 ```bash
-pnpm add @noy-db/hub @noy-db/to-cloudflare-r2
+pnpm add @noy-db/hub @noy-db/to-cloudflare-r2 @noy-db/to-aws-s3 @aws-sdk/client-s3
 ```
 
 ## What it is
@@ -29,7 +29,7 @@ Cloudflare R2 adapter for noy-db — S3-compatible object storage with zero egre
 
 ## Status
 
-**Pre-release** (`0.1.0-pre.1`). API may change before `1.0`.
+**Pre-release.** API may change before `1.0`.
 
 ## Documentation
 

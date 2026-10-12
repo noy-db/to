@@ -18,7 +18,7 @@ SMB/CIFS network file store for noy-db. Works against Windows file servers, NAS 
 
 ## Status
 
-**Pre-release** (`0.1.0-pre.1`). API may change before `1.0`.
+**Pre-release.** API may change before `1.0`.
 
 ## Documentation
 

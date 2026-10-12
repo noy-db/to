@@ -18,7 +18,7 @@ PostgreSQL adapter for noy-db — encrypted-envelope KV with jsonb column. Works
 
 ## Status
 
-**Pre-release** (`0.1.0-pre.1`). API may change before `1.0`.
+**Pre-release.** API may change before `1.0`.
 
 ## Documentation
 

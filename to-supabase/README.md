@@ -9,16 +9,16 @@ Part of [**`@noy-db/hub`**](https://www.npmjs.com/package/@noy-db/hub) — the z
 ## Install
 
 ```bash
-pnpm add @noy-db/hub @noy-db/to-supabase
+pnpm add @noy-db/hub @noy-db/to-supabase @noy-db/to-postgres
 ```
 
 ## What it is
 
-Supabase adapter for noy-db — Postgres + Storage combo. Routes records to @noy-db/to-postgres via the Supabase Postgres pool and optional blob routing via Supabase Storage.
+Supabase adapter for noy-db — a thin factory over @noy-db/to-postgres for your Supabase Postgres connection (a `pg.Pool` or `pg.Client`). Records only: it does not route blobs to Supabase Storage.
 
 ## Status
 
-**Pre-release** (`0.1.0-pre.1`). API may change before `1.0`.
+**Pre-release.** API may change before `1.0`.
 
 ## Documentation
 
