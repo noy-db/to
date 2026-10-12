@@ -17,6 +17,11 @@ export function mockClient(rows: Map<string, Row> = new Map()): PostgresClient &
   async function query<T>(sql: string, params?: readonly unknown[]): Promise<{ rows: T[] }> {
     const normalized = sql.replace(/\s+/g, ' ').trim().toUpperCase()
     const p = params ?? []
+    // Real Postgres `text` refuses a 0x00 byte (family#174) — the mock must too.
+    if (p.flat().some(x => typeof x === 'string' && x.includes('\0'))) {
+      throw new Error('invalid byte sequence for encoding "UTF8": 0x00')
+    }
+    const ids = (x: unknown): string[] => (Array.isArray(x) ? x as string[] : [x as string])
 
     if (normalized.startsWith('CREATE TABLE')) return { rows: [] }
     if (normalized === 'BEGIN') {
@@ -48,6 +53,16 @@ export function mockClient(rows: Map<string, Row> = new Map()): PostgresClient &
       })
       return { rows: [] }
     }
+    if (normalized.startsWith('UPDATE') && normalized.includes('SET ID = $4')) {
+      // adoptLegacy: move a row onto its encoded key unless that key is taken.
+      const [vault, collection, from, to] = p as [string, string, string, string]
+      const row = rows.get(key(vault, collection, from))
+      if (row && !rows.has(key(vault, collection, to))) {
+        rows.delete(key(vault, collection, from))
+        rows.set(key(vault, collection, to), { ...row, id: to })
+      }
+      return { rows: [] }
+    }
     if (normalized.startsWith('UPDATE')) {
       const [vault, collection, id, v, envelope, expected] = p as [string, string, string, number, string, number]
       const row = rows.get(key(vault, collection, id))
@@ -64,8 +79,8 @@ export function mockClient(rows: Map<string, Row> = new Map()): PostgresClient &
         return { rows: [{ id } as unknown as T] }
       }
       if (p.length === 3) {
-        const [vault, collection, id] = p as [string, string, string]
-        rows.delete(key(vault, collection, id))
+        const [vault, collection, id] = p as [string, string, unknown]
+        for (const i of ids(id)) rows.delete(key(vault, collection, i))
       } else if (p.length === 1) {
         const [vault] = p as [string]
         const keepUnderscore = normalized.includes("<> '_'")
@@ -73,10 +88,10 @@ export function mockClient(rows: Map<string, Row> = new Map()): PostgresClient &
       }
       return { rows: [] }
     }
-    if (normalized.startsWith('SELECT ENVELOPE FROM')) {
-      const [vault, collection, id] = p as [string, string, string]
-      const row = rows.get(key(vault, collection, id))
-      return { rows: row ? [{ envelope: row.envelope } as unknown as T] : [] }
+    if (normalized.startsWith('SELECT ID, ENVELOPE FROM') && normalized.includes('ANY(')) {
+      const [vault, collection, keys] = p as [string, string, string[]]
+      const found = keys.map(k => rows.get(key(vault, collection, k))).filter((r): r is Row => r !== undefined)
+      return { rows: found.map(r => ({ id: r.id, envelope: r.envelope })) as unknown as T[] }
     }
     if (normalized.startsWith('SELECT V FROM')) {
       const [vault, collection, id] = p as [string, string, string]

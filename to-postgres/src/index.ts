@@ -102,6 +102,32 @@ function assertTableName(tableName: string): void {
   }
 }
 
+/**
+ * Reversible id encoding at the Postgres boundary (family#174), the same codec
+ * as to-file's. `text` refuses a 0x00 byte outright ("invalid byte sequence
+ * for encoding UTF8"), and hub joins partitioned sequence and period keys with
+ * `\x00`, so every id is bound encoded and read back decoded. `%` is escaped
+ * FIRST or `a%00b` and `a\x00b` share one row; the scope is `%` and NUL only.
+ */
+function encodeId(id: string): string {
+  return id.replace(/%/g, '%25').replace(/\0/g, '%00')
+}
+
+/** Exact inverse of {@link encodeId}, in ONE pass (`%2500` → `%00`). */
+function decodeId(id: string): string {
+  return id.replace(/%(25|00)/g, (_m, code: string) => (code === '25' ? '%' : '\0'))
+}
+
+/**
+ * The key a pre-family#174 row holds for `id`: encoding `%` moved every
+ * existing id containing one. ⛔ Null whenever that raw key is ANOTHER id's
+ * encoded key (`a%00b` is where `a\x00b` lives), when nothing moved, and for
+ * an id holding a NUL, which `text` never stored.
+ */
+function legacyKey(id: string): string | null {
+  return id.includes('\0') || !id.includes('%') || encodeId(decodeId(id)) === id ? null : id
+}
+
 export function toPostgres(options: PostgresStoreOptions): NoydbStore {
   const { client, tableName = 'noydb_envelopes', autoMigrate = true } = options
   assertTableName(tableName)
@@ -160,6 +186,7 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
     expectedVersion?: number,
   ): Promise<void> {
     await ensureSchema()
+    id = await adoptLegacy(q, vault, collection, id)
     if (expectedVersion !== undefined) {
       // One statement each, so two writers holding the same expectedVersion
       // cannot both pass (family#145): 0 → create-only, N → the row must exist
@@ -190,6 +217,26 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
     )
   }
 
+  /**
+   * Moves a pre-family#174 row onto its encoded key, in one statement, and
+   * returns the encoded key. Run before any write or delete, so a versioned put
+   * sees the legacy row's version instead of "absent", and the id lists once.
+   * A no-op unless the id holds a `%`.
+   */
+  async function adoptLegacy(q: PostgresClient, vault: string, collection: string, id: string): Promise<string> {
+    const key = encodeId(id)
+    const legacy = legacyKey(id)
+    if (legacy !== null) {
+      await q.query(
+        `UPDATE ${tableName} SET id = $4
+         WHERE vault = $1 AND collection = $2 AND id = $3
+           AND NOT EXISTS (SELECT 1 FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $4)`,
+        [vault, collection, legacy, key],
+      )
+    }
+    return key
+  }
+
   /** Current version of a row, or `null` when it is absent. */
   async function probeVersion(q: PostgresClient, vault: string, collection: string, id: string): Promise<number | null> {
     const { rows } = await q.query<{ v: number }>(
@@ -213,10 +260,13 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
 
     async get(vault, collection, id) {
       await ensureSchema()
-      const { rows } = await client.query<{ envelope: EncryptedEnvelope | string }>(
-        `SELECT envelope FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,
-        [vault, collection, id],
+      // The encoded key first, then a pre-family#174 row's raw one (see `legacyKey`).
+      const keys = [encodeId(id), legacyKey(id)].filter((k): k is string => k !== null)
+      const { rows } = await client.query<{ id: string; envelope: EncryptedEnvelope | string }>(
+        `SELECT id, envelope FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = ANY($3::text[])`,
+        [vault, collection, keys],
       )
+      rows.sort((a, b) => keys.indexOf(a.id) - keys.indexOf(b.id))
       if (rows.length === 0) return null
       const raw = rows[0]!.envelope
       return typeof raw === 'string' ? (JSON.parse(raw) as EncryptedEnvelope) : raw
@@ -228,9 +278,11 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
 
     async delete(vault, collection, id) {
       await ensureSchema()
+      // A pre-family#174 row under its raw key goes too, or it would resurface.
+      const keys = [encodeId(id), legacyKey(id)].filter((k): k is string => k !== null)
       await client.query(
-        `DELETE FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,
-        [vault, collection, id],
+        `DELETE FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = ANY($3::text[])`,
+        [vault, collection, keys],
       )
     },
 
@@ -240,7 +292,7 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
         `SELECT id FROM ${tableName} WHERE vault = $1 AND collection = $2 ORDER BY id`,
         [vault, collection],
       )
-      return rows.map(r => r.id)
+      return rows.map(r => decodeId(r.id))
     },
 
     async loadAll(vault) {
@@ -260,7 +312,7 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
         const env = typeof row.envelope === 'string'
           ? (JSON.parse(row.envelope) as EncryptedEnvelope)
           : row.envelope
-        bucket[row.id] = env
+        bucket[decodeId(row.id)] = env
       }
       return snap
     },
@@ -290,6 +342,7 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
 
     async listPage(vault, collection, cursor, limit = 100) {
       await ensureSchema()
+      // The cursor is the last row's STORED (encoded) key: rows sort by it.
       const afterId = cursor ?? ''
       // Fetch limit+1 so we can distinguish "exactly N rows remain" from
       // "more rows remain" without a second round-trip.
@@ -302,7 +355,7 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
       const hasMore = rows.length > limit
       const trimmed = hasMore ? rows.slice(0, limit) : rows
       const items = trimmed.map(r => ({
-        id: r.id,
+        id: decodeId(r.id),
         envelope: typeof r.envelope === 'string'
           ? (JSON.parse(r.envelope) as EncryptedEnvelope)
           : r.envelope,
@@ -322,24 +375,25 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
             if (!op.envelope) throw new Error(`tx put op missing envelope for ${op.id}`)
             await upsert(q, op.vault, op.collection, op.id, op.envelope, op.expectedVersion)
           } else {
+            const key = await adoptLegacy(q, op.vault, op.collection, op.id)
             if (op.expectedVersion !== undefined) {
               const { rows } = await q.query<{ id: string }>(
                 `DELETE FROM ${tableName}
                  WHERE vault = $1 AND collection = $2 AND id = $3 AND v = $4
                  RETURNING id`,
-                [op.vault, op.collection, op.id, op.expectedVersion],
+                [op.vault, op.collection, key, op.expectedVersion],
               )
               if (rows.length === 0) {
                 // Nothing deleted: the row is absent or at another version.
                 // Absent satisfies expectedVersion 0 only (as in to-turso).
-                const found = await probeVersion(q, op.vault, op.collection, op.id)
+                const found = await probeVersion(q, op.vault, op.collection, key)
                 if (op.expectedVersion !== 0 || found !== null) throw conflict(op.expectedVersion, found)
               }
               continue
             }
             await q.query(
               `DELETE FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,
-              [op.vault, op.collection, op.id],
+              [op.vault, op.collection, key],
             )
           }
         }

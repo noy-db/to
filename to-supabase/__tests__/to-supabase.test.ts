@@ -22,18 +22,18 @@ function mockClient(): PostgresClient & { rowMap: Map<string, Row> } {
     }
     if (normalized.startsWith('DELETE FROM')) {
       if (p.length === 3) {
-        const [vault, collection, id] = p as [string, string, string]
-        rowMap.delete(key(vault, collection, id))
+        const [vault, collection, id] = p as [string, string, string | string[]]
+        for (const i of [id].flat()) rowMap.delete(key(vault, collection, i))
       } else if (p.length === 1) {
         const [vault] = p as [string]
         for (const [k, r] of rowMap) if (r.vault === vault) rowMap.delete(k)
       }
       return { rows: [] }
     }
-    if (normalized.startsWith('SELECT ENVELOPE FROM')) {
-      const [vault, collection, id] = p as [string, string, string]
-      const row = rowMap.get(key(vault, collection, id))
-      return { rows: row ? [{ envelope: row.envelope } as unknown as T] : [] }
+    if (normalized.startsWith('SELECT ID, ENVELOPE FROM')) {
+      const [vault, collection, ids] = p as [string, string, string[]]
+      const found = ids.map(i => rowMap.get(key(vault, collection, i))).filter(r => r !== undefined)
+      return { rows: found.map(r => ({ id: r.id, envelope: r.envelope }) as unknown as T) }
     }
     throw new Error(`mock pg: unsupported SQL: ${normalized}`)
   }
