@@ -12,7 +12,10 @@ import type { S3Client } from '@aws-sdk/client-s3'
  * hook) stays separate: it exists to prove the IfMatch guard under injected
  * races, which needs hooks this general-purpose fake doesn't carry.
  */
-export function fakeS3(): { client: S3Client; objects: Map<string, { body: string; etag: string; lastModified: Date }> } {
+export function fakeS3(
+  /** Server-side page cap, as S3's own 1000-key cap; lower it to make a test paginate (family#146). */
+  { pageSize = 1000 }: { pageSize?: number } = {},
+): { client: S3Client; objects: Map<string, { body: string; etag: string; lastModified: Date }> } {
   const objects = new Map<string, { body: string; etag: string; lastModified: Date }>()
   let etagSeq = 0
 
@@ -64,7 +67,7 @@ export function fakeS3(): { client: S3Client; objects: Map<string, { body: strin
       }
       if (name === 'ListObjectsV2Command') {
         const prefix = (input.Prefix as string | undefined) ?? ''
-        const maxKeys = (input.MaxKeys as number | undefined) ?? 1000
+        const maxKeys = Math.min((input.MaxKeys as number | undefined) ?? 1000, pageSize)
         const after = (input.ContinuationToken as string | undefined) ?? ''
         const matched = [...objects.entries()]
           .filter(([k]) => k.startsWith(prefix) && k > after)
