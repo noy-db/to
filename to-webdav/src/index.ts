@@ -111,8 +111,24 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
     return { ...baseHeaders, Authorization: `Bearer ${cachedToken.token}` }
   }
 
+  /**
+   * An id may carry `/` (hub's `_idx/<field>/<id>`, family#133): each component
+   * becomes its own path segment, so a server stores it as nested collections
+   * rather than receiving an encoded `%2F` many servers refuse. A component that
+   * is empty, `.` or `..` would let the URL resolve outside the collection, so
+   * it is refused.
+   */
+  function idSegments(id: string): string[] {
+    const parts = id.split('/')
+    if (/[\\\0]/.test(id) || parts.some(p => p === '' || p === '.' || p === '..')) {
+      throw new Error(`@noy-db/to-webdav: record id must not contain a backslash, NUL, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
+    }
+    return parts
+  }
+
   function urlFor(vault: string, collection: string, id: string): string {
-    const segments = [prefix, vault, collection, `${id}.json`]
+    const parts = idSegments(id)
+    const segments = [prefix, vault, collection, ...parts.slice(0, -1), `${parts[parts.length - 1]}.json`]
       .filter(Boolean)
       .map(encodeURIComponent)
     return `${baseUrl}/${segments.join('/')}`
@@ -123,8 +139,8 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
     return `${baseUrl}/${segments.join('/')}/`
   }
 
-  async function mkcolRecursive(vault: string, collection?: string): Promise<void> {
-    const parts = [prefix, vault, ...(collection ? [collection] : [])].filter(Boolean)
+  async function mkcolRecursive(vault: string, collection?: string, idDirs: string[] = []): Promise<void> {
+    const parts = [prefix, vault, ...(collection ? [collection] : []), ...idDirs].filter(Boolean)
     let url = baseUrl
     for (const part of parts) {
       url += `/${encodeURIComponent(part)}`
@@ -152,8 +168,8 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
   const PROPFIND_BODY = `<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>`
 
-  async function listChildren(vault: string, collection: string): Promise<string[]> {
-    const url = collectionUrl(vault, collection)
+  async function listChildren(vault: string, collection: string, sub: string[] = []): Promise<string[]> {
+    const url = collectionUrl(vault, collection) + sub.map(s => `${encodeURIComponent(s)}/`).join('')
     const res = await fetchImpl(url, {
       method: 'PROPFIND',
       headers: {
@@ -174,14 +190,48 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
       .map(m => decodeURIComponent(m[1]!))
     const selfPath = new URL(url).pathname.replace(/\/+$/, '')
     const ids: string[] = []
+    const idPrefix = sub.map(s => `${s}/`).join('')
     for (const href of hrefs) {
       const hrefPath = href.replace(/\/+$/, '')
       if (hrefPath === selfPath) continue
       const filename = hrefPath.split('/').pop()!
-      if (!filename.endsWith('.json')) continue
-      ids.push(filename.slice(0, -'.json'.length))
+      if (filename.endsWith('.json')) ids.push(idPrefix + filename.slice(0, -'.json'.length))
+      // A child collection holds the rest of a `/`-bearing id (family#133).
+      else if (href.endsWith('/')) ids.push(...await listChildren(vault, collection, [...sub, filename]))
     }
     return ids.sort()
+  }
+
+  /** Non-underscore collections in a vault (`_keyring`, `_sync` are bookkeeping). */
+  async function listCollections(vault: string): Promise<Set<string>> {
+    const rootUrl = `${baseUrl}/${[prefix, vault].filter(Boolean).map(encodeURIComponent).join('/')}/`
+    const res = await fetchImpl(rootUrl, {
+      method: 'PROPFIND',
+      headers: { ...(await requestHeaders()), Depth: '1', 'Content-Type': 'application/xml' },
+      body: PROPFIND_BODY,
+    })
+    if (res.status === 404) return new Set()
+    if (!res.ok && res.status !== 207) {
+      throw new Error(`WebDAV PROPFIND (loadAll) failed: ${res.status}`)
+    }
+    const xml = await res.text()
+    const hrefs = Array.from(xml.matchAll(/<(?:\w+:)?href>([^<]+)<\/(?:\w+:)?href>/g))
+      .map(m => decodeURIComponent(m[1]!))
+    const selfPath = new URL(rootUrl).pathname.replace(/\/+$/, '')
+    const collections = new Set<string>()
+    for (const href of hrefs) {
+      const hrefPath = href.replace(/\/+$/, '')
+      if (hrefPath === selfPath) continue
+      const segment = hrefPath.slice(selfPath.length + 1).split('/')[0]
+      if (!segment) continue
+      const collection = decodeURIComponent(segment)
+      // Internal collections (`_keyring`, `_sync`) are the vault's own
+      // bookkeeping and must not appear in a snapshot — store contract,
+      // reference behaviour: @noy-db/to-file (#26).
+      if (collection.startsWith('_')) continue
+      collections.add(collection)
+    }
+    return collections
   }
 
   const store: NoydbStore = {
@@ -209,20 +259,22 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
       // OBSERVED version mismatch to throw — reference behaviour:
       // @noy-db/to-file (found by the conformance suite, #26).
       if (expectedVersion !== undefined) {
-        const current = await store.get(vault, collection, id)
-        if (current !== null && current._v !== expectedVersion) {
-          throw new ConflictError(current._v, `Version conflict: expected ${expectedVersion}, found ${current._v}`)
+        // family#147 — an absent record is at version 0: `0` creates, `N > 0` conflicts.
+        const current = (await store.get(vault, collection, id))?._v ?? 0
+        if (current !== expectedVersion) {
+          throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
         }
       }
       const body = JSON.stringify(envelope)
       // Eager MKCOL: required for non-RFC servers (DriveHQ etc.) that
       // accept PUT-to-nonexistent with 204 and silently flatten.
+      const idDirs = idSegments(id).slice(0, -1)
       if (eagerMkcol) {
-        await mkcolRecursive(vault, collection)
+        await mkcolRecursive(vault, collection, idDirs)
       }
       let res = await putOnce(vault, collection, id, body)
       if ((res.status === 404 || res.status === 409) && autoMkcol) {
-        await mkcolRecursive(vault, collection)
+        await mkcolRecursive(vault, collection, idDirs)
         res = await putOnce(vault, collection, id, body)
       }
       if (!res.ok) throw new Error(`WebDAV PUT failed: ${res.status}`)
@@ -243,33 +295,7 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
     },
 
     async loadAll(vault) {
-      const rootUrl = `${baseUrl}/${[prefix, vault].filter(Boolean).map(encodeURIComponent).join('/')}/`
-      const res = await fetchImpl(rootUrl, {
-        method: 'PROPFIND',
-        headers: { ...(await requestHeaders()), Depth: '1', 'Content-Type': 'application/xml' },
-        body: PROPFIND_BODY,
-      })
-      if (res.status === 404) return {}
-      if (!res.ok && res.status !== 207) {
-        throw new Error(`WebDAV PROPFIND (loadAll) failed: ${res.status}`)
-      }
-      const xml = await res.text()
-      const hrefs = Array.from(xml.matchAll(/<(?:\w+:)?href>([^<]+)<\/(?:\w+:)?href>/g))
-        .map(m => decodeURIComponent(m[1]!))
-      const selfPath = new URL(rootUrl).pathname.replace(/\/+$/, '')
-      const collections = new Set<string>()
-      for (const href of hrefs) {
-        const hrefPath = href.replace(/\/+$/, '')
-        if (hrefPath === selfPath) continue
-        const segment = hrefPath.slice(selfPath.length + 1).split('/')[0]
-        if (!segment) continue
-        const collection = decodeURIComponent(segment)
-        // Internal collections (`_keyring`, `_sync`) are the vault's own
-        // bookkeeping and must not appear in a snapshot — store contract,
-        // reference behaviour: @noy-db/to-file (#26).
-        if (collection.startsWith('_')) continue
-        collections.add(collection)
-      }
+      const collections = await listCollections(vault)
       const snap: VaultSnapshot = {}
       for (const collection of collections) {
         const ids = await listChildren(vault, collection)
@@ -284,10 +310,19 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
     },
 
     async saveAll(vault, data) {
+      // family#147 — saveAll REPLACES. No transaction over WebDAV, so WRITE
+      // FIRST, PRUNE SECOND: a torn call leaves stale extra records (re-run the
+      // restore) instead of a hole. Underscore collections are never pruned.
       for (const [collection, recs] of Object.entries(data)) {
         await mkcolRecursive(vault, collection)
         for (const [id, envelope] of Object.entries(recs)) {
           await store.put(vault, collection, id, envelope)
+        }
+      }
+      for (const collection of await listCollections(vault)) {
+        const keep = data[collection] ?? {}
+        for (const id of await listChildren(vault, collection)) {
+          if (!Object.hasOwn(keep, id)) await store.delete(vault, collection, id)
         }
       }
     },

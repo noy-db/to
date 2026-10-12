@@ -160,6 +160,21 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
     }
   }
 
+  /**
+   * Record ids under a collection directory, descending into subdirectories:
+   * an id may carry `/` (hub's `_idx/<field>/<id>`, family#133), stored as
+   * nested directories. `.tmp` files are in-flight writes, never records.
+   */
+  async function listIds(dir: string, prefix = ''): Promise<string[]> {
+    const ids: string[] = []
+    for (const e of await safeReaddir(dir)) {
+      if (!isName(e) || e.endsWith('.tmp')) continue
+      if (e.endsWith('.json')) ids.push(prefix + e.slice(0, -'.json'.length))
+      else ids.push(...await listIds('/' + pathJoin(dir, e), `${prefix}${e}/`))
+    }
+    return ids
+  }
+
   const store: NoydbStore = {
     name,
     capabilities: {
@@ -186,9 +201,14 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
           if (current !== expectedVersion) {
             throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
           }
+        } else if (expectedVersion !== 0) {
+          // family#147 — an absent record is at version 0, so `N > 0` conflicts.
+          throw new ConflictError(0, `Version conflict: expected ${expectedVersion}, found no record`)
         }
       }
-      const tmp = `${target}.tmp`
+      // A per-write temp name: two writers sharing `${target}.tmp` clobber each
+      // other's temp file and the second rename fails on a path already moved.
+      const tmp = `${target}.${Math.random().toString(36).slice(2)}.tmp`
       // The record's own parent, not the collection: an id may carry `/` (family#133).
       await ensureDir(target.slice(0, target.lastIndexOf('/')))
       await sftp.writeFile(tmp, JSON.stringify(envelope))
@@ -206,12 +226,7 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
     },
 
     async list(vault, collection) {
-      const entries = await safeReaddir(collPath(vault, collection))
-      return entries
-        .filter(e => e.endsWith('.json') && !e.endsWith('.tmp'))
-        .map(e => e.slice(0, -'.json'.length))
-        .filter(isName)
-        .sort()
+      return (await listIds(collPath(vault, collection))).sort()
     },
 
     async loadAll(vault) {
@@ -231,24 +246,20 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
     },
 
     async saveAll(vault, data) {
-      // Delete the vault tree first to mirror the semantics of other stores.
-      const existingCollections = await safeReaddir(vaultPath(vault))
-      for (const collection of existingCollections) {
-        // A listing may name `.`/`..`; unlinking beneath those leaves the vault.
-        if (!isName(collection)) continue
-        const ids = await safeReaddir(collPath(vault, collection))
-        for (const id of ids) {
-          if (!isName(id)) continue
-          await sftp
-            .unlink('/' + pathJoin(root, vault, collection, id))
-            .catch(() => undefined)
-        }
-      }
-      // Write the new tree.
+      // family#147 — saveAll REPLACES. No transaction here, so WRITE FIRST,
+      // PRUNE SECOND: a torn call leaves stale extra records (re-run the
+      // restore) instead of a hole. Underscore collections are never pruned.
       for (const [collection, recs] of Object.entries(data)) {
         await ensureDir(collPath(vault, collection))
         for (const [id, envelope] of Object.entries(recs)) {
           await store.put(vault, collection, id, envelope)
+        }
+      }
+      for (const collection of await safeReaddir(vaultPath(vault))) {
+        if (!isName(collection) || collection.startsWith('_')) continue
+        const keep = data[collection] ?? {}
+        for (const id of await store.list(vault, collection)) {
+          if (!Object.hasOwn(keep, id)) await store.delete(vault, collection, id)
         }
       }
     },

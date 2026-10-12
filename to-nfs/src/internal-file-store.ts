@@ -81,6 +81,26 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     }
   }
 
+  /**
+   * Record ids under a collection directory, descending into subdirectories:
+   * an id may carry `/` (hub's `_idx/<field>/<id>`, family#133), stored as
+   * nested directories. A missing directory has no ids.
+   */
+  async function listIds(path: string, prefix = ''): Promise<string[]> {
+    let entries
+    try {
+      entries = await readdir(path, { withFileTypes: true })
+    } catch {
+      return []
+    }
+    const ids: string[] = []
+    for (const e of entries) {
+      if (e.isDirectory()) ids.push(...await listIds(join(path, e.name), `${prefix}${e.name}/`))
+      else if (e.name.endsWith('.json')) ids.push(prefix + e.name.slice(0, -'.json'.length))
+    }
+    return ids
+  }
+
   function serialize(envelope: EncryptedEnvelope): string {
     return pretty ? JSON.stringify(envelope, null, 2) : JSON.stringify(envelope)
   }
@@ -112,10 +132,13 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     async put(vault, collection, id, envelope, expectedVersion) {
       const path = recordPath(vault, collection, id)
 
-      if (expectedVersion !== undefined && await fileExists(path)) {
-        const existing = JSON.parse(await readFile(path, 'utf-8')) as EncryptedEnvelope
-        if (existing._v !== expectedVersion) {
-          throw new ConflictError(existing._v, `Version conflict: expected ${expectedVersion}, found ${existing._v}`)
+      if (expectedVersion !== undefined) {
+        // family#147 — an absent record is at version 0: `0` creates, `N > 0` conflicts.
+        const current = await fileExists(path)
+          ? (JSON.parse(await readFile(path, 'utf-8')) as EncryptedEnvelope)._v
+          : 0
+        if (current !== expectedVersion) {
+          throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
         }
       }
 
@@ -134,15 +157,7 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     },
 
     async list(vault, collection) {
-      const dirPath = collectionDir(vault, collection)
-      try {
-        const entries = await readdir(dirPath)
-        return entries
-          .filter(f => f.endsWith('.json'))
-          .map(f => f.slice(0, -5)) // remove .json extension
-      } catch {
-        return []
-      }
+      return listIds(collectionDir(vault, collection))
     },
 
     async loadAll(vault) {
@@ -158,11 +173,8 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
           if (!collStat.isDirectory()) continue
 
           const records: Record<string, EncryptedEnvelope> = {}
-          const files = await readdir(collPath)
-          for (const file of files) {
-            if (!file.endsWith('.json')) continue
-            const id = file.slice(0, -5)
-            const content = await readFile(join(collPath, file), 'utf-8')
+          for (const id of await listIds(collPath)) {
+            const content = await readFile(join(collPath, `${id}.json`), 'utf-8')
             records[id] = JSON.parse(content) as EncryptedEnvelope
           }
           snapshot[collName] = records
@@ -175,12 +187,28 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     },
 
     async saveAll(vault, data) {
+      // family#147 — saveAll REPLACES. No transaction on a filesystem, so WRITE
+      // FIRST, PRUNE SECOND: a torn call leaves stale extra records (re-run the
+      // restore) instead of a hole. Underscore collections are never pruned.
       for (const [collName, records] of Object.entries(data)) {
         await ensureDir(collectionDir(vault, collName))
         for (const [id, envelope] of Object.entries(records)) {
           const path = recordPath(vault, collName, id)
           await ensureDir(dirname(path))
           await writeFile(path, serialize(envelope), 'utf-8')
+        }
+      }
+      let collections: string[]
+      try {
+        collections = await readdir(vaultDir(vault))
+      } catch {
+        return // no vault directory: an empty snapshot into a vault that never existed
+      }
+      for (const collName of collections) {
+        if (collName.startsWith('_')) continue
+        const keep = data[collName] ?? {}
+        for (const id of await listIds(collectionDir(vault, collName))) {
+          if (!Object.hasOwn(keep, id)) await unlink(recordPath(vault, collName, id))
         }
       }
     },
