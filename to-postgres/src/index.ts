@@ -24,7 +24,7 @@
  * | Capability  | Value |
  * |-------------|-------|
  * | `casAtomic` | `true` — `UPDATE … WHERE v = ? RETURNING id` |
- * | `txAtomic`  | `true` — `BEGIN … COMMIT` |
+ * | `txAtomic`  | `true` — `BEGIN … COMMIT` on one connection (checked out of a `Pool`) |
  * | `listPage`  | ✓ — keyset paging by `id` |
  * | `ping`      | ✓ — `SELECT 1` round-trip |
  *
@@ -46,6 +46,31 @@ import { ConflictError } from '@noy-db/hub/to'
 /** Duck-typed subset of the node-postgres `Client` API. */
 export interface PostgresClient {
   query<T = unknown>(sql: string, params?: readonly unknown[]): Promise<{ rows: T[] }>
+}
+
+/** A connection checked out of a pool (node-postgres `PoolClient`). */
+export interface PostgresPoolClient extends PostgresClient {
+  release(): void
+}
+
+/**
+ * Duck-typed subset of node-postgres `Pool` (Neon's and Vercel's pools
+ * extend it). `pool.query()` runs each statement on whichever connection is
+ * free, so a transaction must run on one connection taken with `connect()`.
+ */
+export interface PostgresPool extends PostgresClient {
+  connect(): Promise<PostgresPoolClient>
+  readonly totalCount: number
+}
+
+/**
+ * Not `typeof connect === 'function'` alone: `pg.Client` has `connect()` too,
+ * and calling it on a connected Client throws. `totalCount` is documented on
+ * `Pool` only.
+ */
+function isPool(client: PostgresClient): client is PostgresPool {
+  const c = client as Partial<PostgresPool>
+  return typeof c.connect === 'function' && typeof c.totalCount === 'number'
 }
 
 export interface PostgresStoreOptions {
@@ -88,7 +113,31 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
     await schemaReady
   }
 
+  /**
+   * Runs `fn` between BEGIN and COMMIT on ONE connection — a pool's checked-out
+   * client, or the given client itself (already connection-pinned). Sending
+   * BEGIN/COMMIT through `pool.query()` would put each on a different
+   * connection: the DELETE autocommits and ROLLBACK is a no-op (family#144).
+   */
+  async function inTransaction(fn: (q: PostgresClient) => Promise<void>): Promise<void> {
+    const pinned = isPool(client) ? await client.connect() : null
+    const q = pinned ?? client
+    try {
+      await q.query('BEGIN')
+      try {
+        await fn(q)
+        await q.query('COMMIT')
+      } catch (err) {
+        try { await q.query('ROLLBACK') } catch { /* keep the original error */ }
+        throw err
+      }
+    } finally {
+      pinned?.release()
+    }
+  }
+
   async function upsert(
+    q: PostgresClient,
     vault: string,
     collection: string,
     id: string,
@@ -97,7 +146,7 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
   ): Promise<void> {
     await ensureSchema()
     if (expectedVersion !== undefined) {
-      const { rows } = await client.query<{ v: number }>(
+      const { rows } = await q.query<{ v: number }>(
         `SELECT v FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,
         [vault, collection, id],
       )
@@ -106,7 +155,7 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
         throw new ConflictError(current.v, `Version conflict: expected ${expectedVersion}, found ${current.v}`)
       }
     }
-    await client.query(
+    await q.query(
       `INSERT INTO ${tableName} (vault, collection, id, v, envelope)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (vault, collection, id) DO UPDATE
@@ -135,7 +184,7 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
     },
 
     async put(vault, collection, id, envelope, expectedVersion) {
-      await upsert(vault, collection, id, envelope, expectedVersion)
+      await upsert(client, vault, collection, id, envelope, expectedVersion)
     },
 
     async delete(vault, collection, id) {
@@ -179,19 +228,14 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
 
     async saveAll(vault, data) {
       await ensureSchema()
-      await client.query('BEGIN')
-      try {
-        await client.query(`DELETE FROM ${tableName} WHERE vault = $1`, [vault])
+      await inTransaction(async (q) => {
+        await q.query(`DELETE FROM ${tableName} WHERE vault = $1`, [vault])
         for (const [collection, recs] of Object.entries(data)) {
           for (const [id, envelope] of Object.entries(recs)) {
-            await upsert(vault, collection, id, envelope)
+            await upsert(q, vault, collection, id, envelope)
           }
         }
-        await client.query('COMMIT')
-      } catch (err) {
-        await client.query('ROLLBACK')
-        throw err
-      }
+      })
     },
 
     async ping() {
@@ -231,15 +275,14 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
 
     async tx(ops: readonly TxOp[]) {
       await ensureSchema()
-      await client.query('BEGIN')
-      try {
+      await inTransaction(async (q) => {
         for (const op of ops) {
           if (op.type === 'put') {
             if (!op.envelope) throw new Error(`tx put op missing envelope for ${op.id}`)
-            await upsert(op.vault, op.collection, op.id, op.envelope, op.expectedVersion)
+            await upsert(q, op.vault, op.collection, op.id, op.envelope, op.expectedVersion)
           } else {
             if (op.expectedVersion !== undefined) {
-              const { rows } = await client.query<{ v: number }>(
+              const { rows } = await q.query<{ v: number }>(
                 `SELECT v FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,
                 [op.vault, op.collection, op.id],
               )
@@ -247,17 +290,13 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
                 throw new ConflictError(rows[0].v)
               }
             }
-            await client.query(
+            await q.query(
               `DELETE FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,
               [op.vault, op.collection, op.id],
             )
           }
         }
-        await client.query('COMMIT')
-      } catch (err) {
-        await client.query('ROLLBACK')
-        throw err
-      }
+      })
     },
   }
 
