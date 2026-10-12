@@ -41,13 +41,30 @@ export function mockClient(rowMap: Map<string, Row> = new Map()): MysqlClient & 
 
     if (normalized.startsWith('INSERT INTO')) {
       const [vault, collection, id, v, envelope] = p as [string, string, string, number, string]
+      if (!normalized.includes('ON DUPLICATE KEY') && rowMap.has(key(vault, collection, id))) {
+        throw Object.assign(new Error('Duplicate entry'), { code: 'ER_DUP_ENTRY', errno: 1062 })
+      }
       rowMap.set(key(vault, collection, id), {
         vault, collection, id, v,
         envelope: JSON.parse(envelope) as EncryptedEnvelope,
       })
       return [[], null]
     }
+    if (normalized.startsWith('UPDATE')) {
+      const [v, envelope, vault, collection, id, expected] = p as [number, string, string, string, string, number]
+      const row = rowMap.get(key(vault, collection, id))
+      if (!row || row.v !== expected) return [{ affectedRows: 0 } as unknown as T[], null]
+      rowMap.set(key(vault, collection, id), { vault, collection, id, v, envelope: JSON.parse(envelope) as EncryptedEnvelope })
+      return [{ affectedRows: 1 } as unknown as T[], null]
+    }
     if (normalized.startsWith('DELETE FROM')) {
+      if (p.length === 4) {
+        const [vault, collection, id, expected] = p as [string, string, string, number]
+        const row = rowMap.get(key(vault, collection, id))
+        if (!row || row.v !== expected) return [{ affectedRows: 0 } as unknown as T[], null]
+        rowMap.delete(key(vault, collection, id))
+        return [{ affectedRows: 1 } as unknown as T[], null]
+      }
       if (p.length === 3) {
         const [vault, collection, id] = p as [string, string, string]
         rowMap.delete(key(vault, collection, id))

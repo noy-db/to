@@ -18,7 +18,7 @@
  *
  * | Capability  | Value |
  * |-------------|-------|
- * | `casAtomic` | `true` — `UPDATE … WHERE v = ?` + row-count check |
+ * | `casAtomic` | `true` — one `UPDATE … WHERE v = ?` + affected-row check; a create is a plain `INSERT` that fails on the duplicate key |
  * | `txAtomic`  | `true` — `START TRANSACTION … COMMIT` on one connection (checked out of a pool) |
  * | `listPage`  | ✓ — keyset paging by `id` |
  * | `ping`      | ✓ — `SELECT 1` round-trip |
@@ -124,6 +124,33 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
     await schemaReady
   }
 
+  /** Current version of a row, or `null` when it is absent. */
+  async function probeVersion(q: MysqlClient, vault: string, collection: string, id: string): Promise<number | null> {
+    const [rows] = await q.execute<{ v: number }>(
+      `SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
+      [vault, collection, id],
+    )
+    return rows[0] ? Number(rows[0].v) : null
+  }
+
+  function conflict(expectedVersion: number, found: number | null): ConflictError {
+    return new ConflictError(found ?? 0, `Version conflict: expected ${expectedVersion}, found ${found ?? 'no row'}`)
+  }
+
+  /**
+   * A write's first tuple element is mysql2's `ResultSetHeader`, not a row
+   * array. mysql2 sets CLIENT_FOUND_ROWS by default, so this counts MATCHED
+   * rows — which is what a `WHERE v = ?` precondition needs.
+   */
+  function affectedRows(result: unknown): number {
+    return Number((result as { affectedRows?: number }).affectedRows ?? 0)
+  }
+
+  function isDuplicateKey(err: unknown): boolean {
+    const e = err as { code?: string; errno?: number }
+    return e?.code === 'ER_DUP_ENTRY' || e?.errno === 1062
+  }
+
   async function upsert(
     q: MysqlClient,
     vault: string,
@@ -134,14 +161,28 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
   ): Promise<void> {
     await ensureSchema()
     if (expectedVersion !== undefined) {
-      const [rows] = await q.execute<{ v: number }>(
-        `SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
-        [vault, collection, id],
-      )
-      const current = rows[0]
-      if (current && Number(current.v) !== expectedVersion) {
-        throw new ConflictError(Number(current.v), `Version conflict: expected ${expectedVersion}, found ${current.v}`)
+      // One statement each, so two writers holding the same expectedVersion
+      // cannot both pass (family#145): 0 → create-only (the primary key
+      // refuses a second INSERT), N → the row must exist at exactly v = N.
+      if (expectedVersion === 0) {
+        try {
+          await q.execute(
+            `INSERT INTO ${tableName} (vault, collection, id, v, envelope) VALUES (?, ?, ?, ?, ?)`,
+            [vault, collection, id, envelope._v, JSON.stringify(envelope)],
+          )
+        } catch (err) {
+          if (isDuplicateKey(err)) throw conflict(0, await probeVersion(q, vault, collection, id))
+          throw err
+        }
+        return
       }
+      const [result] = await q.execute(
+        `UPDATE ${tableName} SET v = ?, envelope = ?
+         WHERE vault = ? AND collection = ? AND id = ? AND v = ?`,
+        [envelope._v, JSON.stringify(envelope), vault, collection, id, expectedVersion],
+      )
+      if (affectedRows(result) === 0) throw conflict(expectedVersion, await probeVersion(q, vault, collection, id))
+      return
     }
     await q.execute(
       `INSERT INTO ${tableName} (vault, collection, id, v, envelope)
@@ -262,13 +303,17 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
             await upsert(q, op.vault, op.collection, op.id, op.envelope, op.expectedVersion)
           } else {
             if (op.expectedVersion !== undefined) {
-              const [rows] = await q.execute<{ v: number }>(
-                `SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
-                [op.vault, op.collection, op.id],
+              const [result] = await q.execute(
+                `DELETE FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ? AND v = ?`,
+                [op.vault, op.collection, op.id, op.expectedVersion],
               )
-              if (rows[0] && Number(rows[0].v) !== op.expectedVersion) {
-                throw new ConflictError(Number(rows[0].v))
+              if (affectedRows(result) === 0) {
+                // Nothing deleted: the row is absent or at another version.
+                // Absent satisfies expectedVersion 0 only (as in to-turso).
+                const found = await probeVersion(q, op.vault, op.collection, op.id)
+                if (op.expectedVersion !== 0 || found !== null) throw conflict(op.expectedVersion, found)
               }
+              continue
             }
             await q.execute(
               `DELETE FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,

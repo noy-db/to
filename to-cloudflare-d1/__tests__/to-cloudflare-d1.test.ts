@@ -19,8 +19,20 @@ function mockD1(): D1Database & { rowMap: Map<string, Row> } {
     if (normalized === 'SELECT 1') return { results: [{ '1': 1 }] }
     if (normalized.startsWith('INSERT INTO')) {
       const [vault, collection, id, v, ts, env] = args as [string, string, string, number, string, string]
+      if (normalized.includes('DO NOTHING')) {
+        if (rowMap.has(key(vault, collection, id))) return { results: [] }
+        rowMap.set(key(vault, collection, id), { vault, collection, id, v, ts, env })
+        return { results: [{ id }] }
+      }
       rowMap.set(key(vault, collection, id), { vault, collection, id, v, ts, env })
       return { results: [] }
+    }
+    if (normalized.startsWith('UPDATE')) {
+      const [v, ts, env, , , vault, collection, id, expected] = args as [number, string, string, string, string, string, string, string, number]
+      const row = rowMap.get(key(vault, collection, id))
+      if (!row || row.v !== expected) return { results: [] }
+      rowMap.set(key(vault, collection, id), { vault, collection, id, v, ts, env })
+      return { results: [{ id }] }
     }
     if (normalized.startsWith('DELETE FROM')) {
       if (args.length === 3) {

@@ -14,7 +14,7 @@ pnpm add @noy-db/hub @noy-db/to-postgres
 
 ## What it is
 
-PostgreSQL adapter for noy-db — encrypted-envelope KV with jsonb column. Works with any duck-typed pg-style Client (node-postgres, postgres.js, pg-native, Supabase, Neon serverless). casAtomic: true via UPDATE … WHERE _v = ?.
+PostgreSQL adapter for noy-db — encrypted-envelope KV with jsonb column. Works with any duck-typed pg-style Client (node-postgres, postgres.js, pg-native, Supabase, Neon serverless). casAtomic: true via UPDATE … WHERE v = ?.
 
 ## Status
 
