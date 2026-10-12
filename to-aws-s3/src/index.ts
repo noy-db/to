@@ -144,6 +144,26 @@ export function toAwsS3(options: S3Options): NoydbStore {
     return prefix ? `${prefix}/${vault}/` : `${vault}/`
   }
 
+  /**
+   * Every key under `pfx`. ListObjectsV2 stops at 1000 keys a page, so follow
+   * NextContinuationToken until the listing is complete, as listBundles does
+   * (family#146).
+   */
+  async function listKeys(pfx: string): Promise<string[]> {
+    const keys: string[] = []
+    let token: string | undefined
+    do {
+      const res = await client.send(new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: pfx,
+        ...(token ? { ContinuationToken: token } : {}),
+      }))
+      for (const obj of res.Contents ?? []) keys.push(obj.Key ?? '')
+      token = res.IsTruncated ? res.NextContinuationToken : undefined
+    } while (token)
+    return keys
+  }
+
   // Sentinel key used solely to sample the store's server clock.
   const clockKey = prefix ? `${prefix}/_noydb-clock` : '_noydb-clock'
 
@@ -282,28 +302,16 @@ export function toAwsS3(options: S3Options): NoydbStore {
 
     async list(vault, collection) {
       const pfx = collPrefix(vault, collection)
-      const result = await client.send(new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: pfx,
-      }))
-
-      return (result.Contents ?? [])
-        .map(obj => obj.Key ?? '')
+      return (await listKeys(pfx))
         .filter(k => k.endsWith('.json'))
         .map(k => k.slice(pfx.length, -5))
     },
 
     async loadAll(vault) {
       const pfx = compPrefix(vault)
-      const listResult = await client.send(new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: pfx,
-      }))
-
       const snapshot: VaultSnapshot = {}
 
-      for (const obj of listResult.Contents ?? []) {
-        const key = obj.Key ?? ''
+      for (const key of await listKeys(pfx)) {
         if (!key.endsWith('.json')) continue
 
         const relativePath = key.slice(pfx.length)

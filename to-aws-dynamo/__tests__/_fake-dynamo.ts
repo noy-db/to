@@ -8,7 +8,10 @@ import type { DynamoDocClient } from '../src/index.js'
  * `Limit`/`ExclusiveStartKey`/`LastEvaluatedKey` pagination — the property
  * `listPage()`'s base64 cursor rides on.
  */
-export function fakeDynamo(): { client: DynamoDocClient; items: Map<string, Record<string, unknown>> } {
+export function fakeDynamo(
+  /** Server-side page cap, standing in for Query's 1 MB page; lower it to make a test paginate (family#146). */
+  { pageSize = Infinity }: { pageSize?: number } = {},
+): { client: DynamoDocClient; items: Map<string, Record<string, unknown>> } {
   const items = new Map<string, Record<string, unknown>>()
   const key = (pk: string, sk: string) => `${pk}\x00${sk}`
 
@@ -95,7 +98,7 @@ export function fakeDynamo(): { client: DynamoDocClient; items: Map<string, Reco
         const values = input['ExpressionAttributeValues'] as Record<string, unknown>
         const pk = values[':pk'] as string
         const prefix = (values[':prefix'] as string | undefined) ?? ''
-        const limit = (input['Limit'] as number | undefined) ?? Infinity
+        const limit = Math.min((input['Limit'] as number | undefined) ?? Infinity, pageSize)
         const start = input['ExclusiveStartKey'] as { pk: string; sk: string } | undefined
         const matched = [...items.values()]
           .filter(it => it['pk'] === pk && (it['sk'] as string).startsWith(prefix))

@@ -289,34 +289,47 @@ export function toAwsDynamo(options: DynamoOptions): NoydbStore {
       const client = await getClient()
       const { QueryCommand } = await import('@aws-sdk/lib-dynamodb') as { QueryCommand: new (input: QueryCommandInput) => unknown }
 
-      const result = await client.send(new QueryCommand({
-        TableName: table,
-        KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
-        ExpressionAttributeValues: {
-          ':pk': vault,
-          ':prefix': `${collection}#`,
-        },
-      })) as { Items?: Record<string, unknown>[] }
-
-      return (result.Items ?? []).map(item => {
-        const { id } = parseSk(item['sk'] as string)
-        return id
-      })
+      const ids: string[] = []
+      let startKey: Record<string, unknown> | undefined
+      do {
+        const result = await client.send(new QueryCommand({
+          TableName: table,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+          ExpressionAttributeValues: {
+            ':pk': vault,
+            ':prefix': `${collection}#`,
+          },
+          ...(startKey && { ExclusiveStartKey: startKey }),
+        })) as { Items?: Record<string, unknown>[]; LastEvaluatedKey?: Record<string, unknown> }
+        for (const item of result.Items ?? []) ids.push(parseSk(item['sk'] as string).id)
+        // A Query page stops at 1 MB; keep going until there is no
+        // LastEvaluatedKey, or the rest of the collection is lost (family#146).
+        startKey = result.LastEvaluatedKey
+      } while (startKey)
+      return ids
     },
 
     async loadAll(vault) {
       const client = await getClient()
       const { QueryCommand } = await import('@aws-sdk/lib-dynamodb') as { QueryCommand: new (input: QueryCommandInput) => unknown }
 
-      const result = await client.send(new QueryCommand({
-        TableName: table,
-        KeyConditionExpression: 'pk = :pk',
-        ExpressionAttributeValues: { ':pk': vault },
-      })) as { Items?: Record<string, unknown>[] }
+      const items: Record<string, unknown>[] = []
+      let startKey: Record<string, unknown> | undefined
+      do {
+        const result = await client.send(new QueryCommand({
+          TableName: table,
+          KeyConditionExpression: 'pk = :pk',
+          ExpressionAttributeValues: { ':pk': vault },
+          ...(startKey && { ExclusiveStartKey: startKey }),
+        })) as { Items?: Record<string, unknown>[]; LastEvaluatedKey?: Record<string, unknown> }
+        items.push(...(result.Items ?? []))
+        // Same 1 MB page cap as list() (family#146).
+        startKey = result.LastEvaluatedKey
+      } while (startKey)
 
       const snapshot: VaultSnapshot = {}
 
-      for (const item of result.Items ?? []) {
+      for (const item of items) {
         const sortKey = item['sk'] as string
         const { collection, id } = parseSk(sortKey)
 
