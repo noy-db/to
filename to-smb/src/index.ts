@@ -79,6 +79,32 @@ function join(...parts: string[]): string {
     .join('/')
 }
 
+/**
+ * Segment shape, the rule ruled on family#133 and applied here for family#148.
+ * Path joining here strips only edge slashes, so a `..` segment reached the
+ * server and resolved outside the vault — and `saveAll` unlinks whatever a
+ * listing names.
+ *
+ * `vault` and `collection` are single names. ⛔ An `id` MAY carry `/`: hub
+ * emits `_idx/<field>/<recordId>` ids for persisted index side-cars, so each
+ * `/`-separated component is checked instead of refusing the separator.
+ */
+function isName(value: string): boolean {
+  return value !== '' && value !== '.' && value !== '..' && !/[/\\\0]/.test(value)
+}
+
+function assertName(value: string, what: string): void {
+  if (!isName(value)) {
+    throw new Error(`@noy-db/to-smb: ${what} must be a single path segment, got ${JSON.stringify(value)}`)
+  }
+}
+
+function assertId(id: string): void {
+  if (/[\\\0]/.test(id) || id.split('/').some(p => p === '' || p === '.' || p === '..')) {
+    throw new Error(`@noy-db/to-smb: record id must not contain a backslash, NUL, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
+  }
+}
+
 function decode(bytes: Uint8Array | Buffer): string {
   if (typeof Buffer !== 'undefined' && bytes instanceof Buffer) return bytes.toString('utf-8')
   return new TextDecoder().decode(bytes)
@@ -88,9 +114,18 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
   const { smb: client, remotePath = 'noydb', name = 'smb' } = options
   const root = remotePath.replace(/^\/+|\/+$/g, '')
 
-  const recordPath = (v: string, c: string, id: string): string => join(root, v, c, `${id}.json`)
-  const collPath = (v: string, c: string): string => join(root, v, c)
-  const vaultPath = (v: string): string => join(root, v)
+  const vaultPath = (v: string): string => {
+    assertName(v, 'vault')
+    return join(root, v)
+  }
+  const collPath = (v: string, c: string): string => {
+    assertName(c, 'collection')
+    return join(vaultPath(v), c)
+  }
+  const recordPath = (v: string, c: string, id: string): string => {
+    assertId(id)
+    return join(collPath(v, c), `${id}.json`)
+  }
 
   async function ensureDir(path: string): Promise<void> {
     // SMB mkdir is not always recursive — walk parents.
@@ -143,14 +178,17 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
         }
       }
       const tmp = `${target}.tmp`
-      await ensureDir(collPath(vault, collection))
+      // The record's own parent, not the collection: an id may carry `/` (family#133).
+      await ensureDir(target.slice(0, target.lastIndexOf('/')))
       await client.writeFile(tmp, JSON.stringify(envelope))
       await client.rename(tmp, target)
     },
 
     async delete(vault, collection, id) {
+      // Outside the try: a refused segment must throw, not read as "already gone".
+      const target = recordPath(vault, collection, id)
       try {
-        await client.unlink(recordPath(vault, collection, id))
+        await client.unlink(target)
       } catch {
         /* idempotent */
       }
@@ -161,6 +199,7 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
       return entries
         .filter(e => e.endsWith('.json') && !e.endsWith('.tmp'))
         .map(e => e.slice(0, -'.json'.length))
+        .filter(isName)
         .sort()
     },
 
@@ -168,7 +207,7 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
       const snap: VaultSnapshot = {}
       const collections = await safeReaddir(vaultPath(vault))
       for (const collection of collections) {
-        if (collection.startsWith('_')) continue
+        if (!isName(collection) || collection.startsWith('_')) continue
         const ids = await store.list(vault, collection)
         const bucket: Record<string, EncryptedEnvelope> = {}
         for (const id of ids) {
@@ -183,8 +222,11 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
     async saveAll(vault, data) {
       const existing = await safeReaddir(vaultPath(vault))
       for (const collection of existing) {
+        // A listing may name `.`/`..`; unlinking beneath those leaves the vault.
+        if (!isName(collection)) continue
         const ids = await safeReaddir(collPath(vault, collection))
         for (const fname of ids) {
+          if (!isName(fname)) continue
           await client.unlink(join(root, vault, collection, fname)).catch(() => undefined)
         }
       }

@@ -16,7 +16,7 @@
  */
 
 import { readFile, writeFile, mkdir, readdir, unlink, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { NoydbStore, EncryptedEnvelope, VaultSnapshot } from '@noy-db/hub/to'
 import { ConflictError } from '@noy-db/hub/to'
 
@@ -29,15 +29,43 @@ export interface JsonFileOptions {
   clockUncertaintyMs?: number
 }
 
+/**
+ * Segment shape, the rule ruled on family#133 and applied here for family#148:
+ * `join` COLLAPSES `..` rather than refusing it, so `join(dir, '..', c, id)`
+ * landed outside the mount and read as an ordinary path.
+ *
+ * `vault` and `collection` are single names. ⛔ An `id` MAY carry `/`: hub
+ * emits `_idx/<field>/<recordId>` ids for persisted index side-cars, so each
+ * `/`-separated component is checked instead of refusing the separator.
+ */
+function assertName(value: string, what: string): void {
+  if (value === '' || value === '.' || value === '..' || /[/\\\0]/.test(value)) {
+    throw new Error(`@noy-db/to-nfs: ${what} must be a single path segment, got ${JSON.stringify(value)}`)
+  }
+}
+
+function assertId(id: string): void {
+  if (/[\\\0]/.test(id) || id.split('/').some(p => p === '' || p === '.' || p === '..')) {
+    throw new Error(`@noy-db/to-nfs: record id must not contain a backslash, NUL, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
+  }
+}
+
 export function jsonFile(options: JsonFileOptions): NoydbStore {
   const { dir, pretty = true } = options
 
-  function recordPath(vault: string, collection: string, id: string): string {
-    return join(dir, vault, collection, `${id}.json`)
+  function vaultDir(vault: string): string {
+    assertName(vault, 'vault')
+    return join(dir, vault)
   }
 
   function collectionDir(vault: string, collection: string): string {
-    return join(dir, vault, collection)
+    assertName(collection, 'collection')
+    return join(vaultDir(vault), collection)
+  }
+
+  function recordPath(vault: string, collection: string, id: string): string {
+    assertId(id)
+    return join(collectionDir(vault, collection), `${id}.json`)
   }
 
   async function ensureDir(path: string): Promise<void> {
@@ -91,7 +119,8 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
         }
       }
 
-      await ensureDir(collectionDir(vault, collection))
+      // The record's own parent, not the collection: an id may carry `/` (family#133).
+      await ensureDir(dirname(path))
       await writeFile(path, serialize(envelope), 'utf-8')
     },
 
@@ -117,7 +146,7 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     },
 
     async loadAll(vault) {
-      const compDir = join(dir, vault)
+      const compDir = vaultDir(vault)
       const snapshot: VaultSnapshot = {}
 
       try {
@@ -147,10 +176,11 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
 
     async saveAll(vault, data) {
       for (const [collName, records] of Object.entries(data)) {
-        const collDir = collectionDir(vault, collName)
-        await ensureDir(collDir)
+        await ensureDir(collectionDir(vault, collName))
         for (const [id, envelope] of Object.entries(records)) {
-          await writeFile(join(collDir, `${id}.json`), serialize(envelope), 'utf-8')
+          const path = recordPath(vault, collName, id)
+          await ensureDir(dirname(path))
+          await writeFile(path, serialize(envelope), 'utf-8')
         }
       }
     },
