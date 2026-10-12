@@ -95,10 +95,10 @@ export function toMemory(opts: { clockUncertaintyMs?: number } = {}): NoydbStore
       const coll = getCollection(vault, collection)
       const existing = coll.get(id)
 
-      if (expectedVersion !== undefined && existing) {
-        if (existing._v !== expectedVersion) {
-          throw new ConflictError(existing._v, `Version conflict: expected ${expectedVersion}, found ${existing._v}`)
-        }
+      // family#147 — an absent id is at version 0: `0` creates, `N > 0` conflicts.
+      const current = existing?._v ?? 0
+      if (expectedVersion !== undefined && current !== expectedVersion) {
+        throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
       }
 
       coll.set(id, envelope)

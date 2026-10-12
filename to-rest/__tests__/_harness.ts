@@ -47,9 +47,10 @@ export function restHarness(): { fetch: typeof fetch; backing: NoydbStore; reque
     },
 
     async put(vault, collection, id, envelope, expectedVersion) {
-      const existing = data.get(vault)?.get(collection)?.get(id)
-      if (expectedVersion !== undefined && existing && existing._v !== expectedVersion) {
-        throw new ConflictError(existing._v, `Version conflict: expected ${expectedVersion}, found ${existing._v}`)
+      // family#147 — an absent id is at version 0: `0` creates, `N > 0` conflicts.
+      const current = data.get(vault)?.get(collection)?.get(id)?._v ?? 0
+      if (expectedVersion !== undefined && current !== expectedVersion) {
+        throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
       }
       coll(vault, collection).set(id, envelope)
     },
@@ -74,7 +75,10 @@ export function restHarness(): { fetch: typeof fetch; backing: NoydbStore; reque
     },
 
     async saveAll(vault, snapshot) {
-      data.set(vault, new Map())
+      // family#147 — replace every non-underscore collection; never drop an
+      // underscore one (`_keyring` must survive a partial snapshot).
+      const v = data.get(vault)
+      for (const collection of v?.keys() ?? []) if (!collection.startsWith('_')) v!.delete(collection)
       for (const [collection, records] of Object.entries(snapshot)) {
         for (const [id, envelope] of Object.entries(records)) {
           coll(vault, collection).set(id, envelope)
