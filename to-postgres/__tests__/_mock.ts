@@ -37,13 +37,32 @@ export function mockClient(rows: Map<string, Row> = new Map()): PostgresClient &
 
     if (normalized.startsWith('INSERT INTO')) {
       const [vault, collection, id, v, envelope] = p as [string, string, string, number, string]
+      if (normalized.includes('DO NOTHING')) {
+        if (rows.has(key(vault, collection, id))) return { rows: [] }
+        rows.set(key(vault, collection, id), { vault, collection, id, v, envelope: JSON.parse(envelope) as EncryptedEnvelope })
+        return { rows: [{ id } as unknown as T] }
+      }
       rows.set(key(vault, collection, id), {
         vault, collection, id, v,
         envelope: JSON.parse(envelope) as EncryptedEnvelope,
       })
       return { rows: [] }
     }
+    if (normalized.startsWith('UPDATE')) {
+      const [vault, collection, id, v, envelope, expected] = p as [string, string, string, number, string, number]
+      const row = rows.get(key(vault, collection, id))
+      if (!row || row.v !== expected) return { rows: [] }
+      rows.set(key(vault, collection, id), { vault, collection, id, v, envelope: JSON.parse(envelope) as EncryptedEnvelope })
+      return { rows: [{ id } as unknown as T] }
+    }
     if (normalized.startsWith('DELETE FROM')) {
+      if (p.length === 4) {
+        const [vault, collection, id, expected] = p as [string, string, string, number]
+        const row = rows.get(key(vault, collection, id))
+        if (!row || row.v !== expected) return { rows: [] }
+        rows.delete(key(vault, collection, id))
+        return { rows: [{ id } as unknown as T] }
+      }
       if (p.length === 3) {
         const [vault, collection, id] = p as [string, string, string]
         rows.delete(key(vault, collection, id))

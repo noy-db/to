@@ -3,8 +3,10 @@
  *
  * Encrypted envelopes land in a single `noydb_envelopes` table with a
  * `jsonb` column for the envelope payload. Keyed by `(vault,
- * collection, id)`. Version bumps use `UPDATE … WHERE v = ? RETURNING`
- * for atomic CAS.
+ * collection, id)`. A versioned write is one conditional statement —
+ * `UPDATE … WHERE v = $n RETURNING id`, or `INSERT … ON CONFLICT DO
+ * NOTHING RETURNING id` for a create (`expectedVersion` 0) — so CAS is
+ * atomic without a transaction.
  *
  * ## Driver — bring your own
  *
@@ -23,7 +25,7 @@
  *
  * | Capability  | Value |
  * |-------------|-------|
- * | `casAtomic` | `true` — `UPDATE … WHERE v = ? RETURNING id` |
+ * | `casAtomic` | `true` — `UPDATE … WHERE v = $n RETURNING id` |
  * | `txAtomic`  | `true` — `BEGIN … COMMIT` on one connection (checked out of a `Pool`) |
  * | `listPage`  | ✓ — keyset paging by `id` |
  * | `ping`      | ✓ — `SELECT 1` round-trip |
@@ -146,14 +148,25 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
   ): Promise<void> {
     await ensureSchema()
     if (expectedVersion !== undefined) {
-      const { rows } = await q.query<{ v: number }>(
-        `SELECT v FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,
-        [vault, collection, id],
-      )
-      const current = rows[0]
-      if (current && current.v !== expectedVersion) {
-        throw new ConflictError(current.v, `Version conflict: expected ${expectedVersion}, found ${current.v}`)
-      }
+      // One statement each, so two writers holding the same expectedVersion
+      // cannot both pass (family#145): 0 → create-only, N → the row must exist
+      // at exactly v = N. Zero rows back means the precondition failed.
+      const { rows } = expectedVersion === 0
+        ? await q.query<{ id: string }>(
+          `INSERT INTO ${tableName} (vault, collection, id, v, envelope)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (vault, collection, id) DO NOTHING
+           RETURNING id`,
+          [vault, collection, id, envelope._v, JSON.stringify(envelope)],
+        )
+        : await q.query<{ id: string }>(
+          `UPDATE ${tableName} SET v = $4, envelope = $5
+           WHERE vault = $1 AND collection = $2 AND id = $3 AND v = $6
+           RETURNING id`,
+          [vault, collection, id, envelope._v, JSON.stringify(envelope), expectedVersion],
+        )
+      if (rows.length === 0) throw conflict(expectedVersion, await probeVersion(q, vault, collection, id))
+      return
     }
     await q.query(
       `INSERT INTO ${tableName} (vault, collection, id, v, envelope)
@@ -162,6 +175,19 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
          SET v = EXCLUDED.v, envelope = EXCLUDED.envelope`,
       [vault, collection, id, envelope._v, JSON.stringify(envelope)],
     )
+  }
+
+  /** Current version of a row, or `null` when it is absent. */
+  async function probeVersion(q: PostgresClient, vault: string, collection: string, id: string): Promise<number | null> {
+    const { rows } = await q.query<{ v: number }>(
+      `SELECT v FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,
+      [vault, collection, id],
+    )
+    return rows[0] ? Number(rows[0].v) : null
+  }
+
+  function conflict(expectedVersion: number, found: number | null): ConflictError {
+    return new ConflictError(found ?? 0, `Version conflict: expected ${expectedVersion}, found ${found ?? 'no row'}`)
   }
 
   const store: NoydbStore = {
@@ -282,13 +308,19 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
             await upsert(q, op.vault, op.collection, op.id, op.envelope, op.expectedVersion)
           } else {
             if (op.expectedVersion !== undefined) {
-              const { rows } = await q.query<{ v: number }>(
-                `SELECT v FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,
-                [op.vault, op.collection, op.id],
+              const { rows } = await q.query<{ id: string }>(
+                `DELETE FROM ${tableName}
+                 WHERE vault = $1 AND collection = $2 AND id = $3 AND v = $4
+                 RETURNING id`,
+                [op.vault, op.collection, op.id, op.expectedVersion],
               )
-              if (rows[0] && rows[0].v !== op.expectedVersion) {
-                throw new ConflictError(rows[0].v)
+              if (rows.length === 0) {
+                // Nothing deleted: the row is absent or at another version.
+                // Absent satisfies expectedVersion 0 only (as in to-turso).
+                const found = await probeVersion(q, op.vault, op.collection, op.id)
+                if (op.expectedVersion !== 0 || found !== null) throw conflict(op.expectedVersion, found)
               }
+              continue
             }
             await q.query(
               `DELETE FROM ${tableName} WHERE vault = $1 AND collection = $2 AND id = $3`,

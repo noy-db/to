@@ -21,7 +21,7 @@
  *
  * | Capability  | Value |
  * |-------------|-------|
- * | `casAtomic` | `true` — `UPDATE … WHERE v = ?` inside a D1 batch |
+ * | `casAtomic` | `true` — one `UPDATE … WHERE v = ? RETURNING id` (a create: `INSERT … ON CONFLICT DO NOTHING RETURNING id`) |
  * | `txAtomic`  | `true` — `D1Database.batch()` is atomic per-session; per-op `expectedVersion` enforced by in-batch guards |
  * | `listPage`  | ✓ — keyset pagination by id |
  * | `ping`      | ✓ — `SELECT 1` |
@@ -174,13 +174,37 @@ export function toCloudflareD1(options: D1StoreOptions): NoydbStore {
   ): Promise<void> {
     await ensureSchema()
     if (expectedVersion !== undefined) {
-      const existing = await db
-        .prepare(`SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`)
-        .bind(vault, collection, id)
-        .first<{ v: number }>()
-      if (existing && existing.v !== expectedVersion) {
-        throw new ConflictError(existing.v, `Version conflict: expected ${expectedVersion}, found ${existing.v}`)
+      // One statement each, so two writers holding the same expectedVersion
+      // cannot both pass (family#145): 0 → create-only, N → the row must exist
+      // at exactly v = N. No row returned means the precondition failed.
+      const args = [envelope._v, envelope._ts, JSON.stringify(envelope), envelope._iv, envelope._data]
+      const res = expectedVersion === 0
+        ? await db
+          .prepare(
+            `INSERT INTO ${tableName} (vault, collection, id, v, ts, env, iv, data)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(vault, collection, id) DO NOTHING
+             RETURNING id`,
+          )
+          .bind(vault, collection, id, ...args)
+          .all<{ id: string }>()
+        : await db
+          .prepare(
+            `UPDATE ${tableName} SET v = ?, ts = ?, env = ?, iv = ?, data = ?
+             WHERE vault = ? AND collection = ? AND id = ? AND v = ?
+             RETURNING id`,
+          )
+          .bind(...args, vault, collection, id, expectedVersion)
+          .all<{ id: string }>()
+      if ((res.results ?? []).length === 0) {
+        const existing = await db
+          .prepare(`SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`)
+          .bind(vault, collection, id)
+          .first<{ v: number }>()
+        const found = existing ? existing.v : null
+        throw new ConflictError(found ?? 0, `Version conflict: expected ${expectedVersion}, found ${found ?? 'no row'}`)
       }
+      return
     }
     await upsertStatement(vault, collection, id, envelope).run()
   }

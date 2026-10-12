@@ -49,4 +49,24 @@ describe('@noy-db/to-mysql over a pool', () => {
     expect(await store.list('v1', 'c1')).toEqual(['more', 'new'])
     expect(pool.checkedOut).toBe(0)
   })
+
+  it('a CAS put or versioned delete inside tx runs on the pinned connection', async () => {
+    // family#144 x #145: a precondition checked off the transaction's own
+    // connection is neither isolated by it nor rolled back with it.
+    await store.put('v1', 'c1', 'a', env(1))
+    await store.put('v1', 'c1', 'd', env(1))
+    const direct: string[] = []
+    const execute = pool.execute; pool.execute = ((...a: Parameters<typeof execute>) => { direct.push(String(a[0])); return execute(...a) }) as typeof execute
+    const query = pool.query!; pool.query = ((...a: Parameters<typeof query>) => { direct.push(String(a[0])); return query(...a) }) as typeof query
+    await store.tx!([
+      { type: 'put', vault: 'v1', collection: 'c1', id: 'a', envelope: env(2), expectedVersion: 1 },
+      { type: 'put', vault: 'v1', collection: 'c1', id: 'n', envelope: env(1), expectedVersion: 0 },
+      { type: 'delete', vault: 'v1', collection: 'c1', id: 'd', expectedVersion: 1 },
+    ])
+    await expect(store.tx!([
+      { type: 'put', vault: 'v1', collection: 'c1', id: 'a', envelope: env(3), expectedVersion: 1 },
+    ])).rejects.toThrow(/conflict/i)
+    expect(direct).toEqual([])
+    expect(pool.checkedOut).toBe(0)
+  })
 })
