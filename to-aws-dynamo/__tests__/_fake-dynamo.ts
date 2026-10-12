@@ -34,6 +34,9 @@ export function fakeDynamo(
           const expected = (input['ExpressionAttributeValues'] as Record<string, unknown>)[':expected']
           const current = items.get(k)
           if (current && current['_v'] !== expected) throw conditionalCheckFailed()
+        } else if (condition === '#v = :expected') {
+          const expected = (input['ExpressionAttributeValues'] as Record<string, unknown>)[':expected']
+          if (items.get(k)?.['_v'] !== expected) throw conditionalCheckFailed()
         } else if (condition !== undefined) {
           throw new Error(`fake dynamo: unmodelled ConditionExpression: ${condition}`)
         }

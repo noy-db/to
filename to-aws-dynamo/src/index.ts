@@ -268,7 +268,11 @@ export function toAwsDynamo(options: DynamoOptions): NoydbStore {
       const input: PutCommandInput = { TableName: table, Item: item }
 
       if (expectedVersion !== undefined) {
-        input.ConditionExpression = '#v = :expected OR attribute_not_exists(pk)'
+        // family#147 — absence satisfies only `0` (create); for `N > 0` a missing
+        // item fails `#v = :expected` and conflicts at version 0, as in tx().
+        input.ConditionExpression = expectedVersion === 0
+          ? '#v = :expected OR attribute_not_exists(pk)'
+          : '#v = :expected'
         input.ExpressionAttributeNames = { '#v': '_v' }
         input.ExpressionAttributeValues = { ':expected': expectedVersion }
       }
@@ -358,10 +362,18 @@ export function toAwsDynamo(options: DynamoOptions): NoydbStore {
     },
 
     async saveAll(vault, data) {
-      // Use individual puts (DynamoDB batch write has limitations with conditions)
+      // family#147 — saveAll REPLACES. Individual puts, not one transaction
+      // (TransactWriteItems caps at 100 items), so WRITE FIRST, PRUNE SECOND: a
+      // torn call leaves stale extra records (re-run the restore) instead of a
+      // hole. loadAll skips underscore collections, so they are never pruned.
       for (const [collName, records] of Object.entries(data)) {
         for (const [id, envelope] of Object.entries(records)) {
           await this.put(vault, collName, id, envelope)
+        }
+      }
+      for (const [collName, records] of Object.entries(await this.loadAll(vault))) {
+        for (const id of Object.keys(records)) {
+          if (!Object.hasOwn(data[collName] ?? {}, id)) await this.delete(vault, collName, id)
         }
       }
     },

@@ -315,12 +315,27 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
           } catch (error) {
             if (errorName(error) !== 'NotFoundError') throw error
           }
-          if (existing !== null && existing._v !== expectedVersion) {
-            throw new ConflictError(
-              existing._v,
-              `Version conflict: expected ${expectedVersion}, found ${existing._v}`,
-            )
+          // family#147 — an absent record is at version 0: `0` creates, `N > 0` conflicts.
+          const current = existing?._v ?? 0
+          if (current !== expectedVersion) {
+            throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
           }
+
+          try {
+            await writeRecord(collectionDir, id, envelope)
+          } catch (error) {
+            // A read-back that is another writer's WHOLE envelope is not a torn
+            // write: that writer passed the same check and landed after us. On a
+            // CAS write that is a lost race, and it must read as one (family#147).
+            if (!(error instanceof FsWriteVerifyError)) throw error
+            let landed: EncryptedEnvelope | null = null
+            try {
+              landed = await readFile(await collectionDir.getFileHandle(`${id}.json`))
+            } catch { /* unreadable: keep the verify error */ }
+            if (landed === null) throw error
+            throw new ConflictError(landed._v, `Version conflict: a concurrent write landed v${landed._v}`)
+          }
+          return
         }
 
         await writeRecord(collectionDir, id, envelope)
@@ -380,6 +395,17 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
           const collectionDir = await dir([vault, collectionName], true)
           for (const [id, envelope] of Object.entries(records)) {
             await writeRecord(collectionDir, id, envelope)
+          }
+        }
+        // family#147 — saveAll REPLACES. A directory has no transaction, so
+        // WRITE FIRST (above), PRUNE SECOND: a torn call leaves stale extra
+        // records rather than a hole. Underscore collections are never pruned.
+        const vaultDir = await dir([vault], true)
+        for await (const [collectionName, entry] of vaultDir.entries()) {
+          if (collectionName.startsWith('_') || !isDirectory(entry)) continue
+          const keep = data[collectionName] ?? {}
+          for (const id of await recordIds(entry)) {
+            if (!Object.hasOwn(keep, id)) await entry.removeEntry(`${id}.json`)
           }
         }
       } catch (error) {

@@ -145,6 +145,17 @@ export function toAwsS3(options: S3Options): NoydbStore {
   }
 
   /**
+   * `{collection, id}` of a record key under `compPrefix(vault)`, or null. The id
+   * is everything after the collection: it may carry `/` (family#133).
+   */
+  function parseRecordKey(pfx: string, key: string): { collection: string; id: string } | null {
+    if (!key.endsWith('.json')) return null
+    const parts = key.slice(pfx.length, -'.json'.length).split('/')
+    if (parts.length < 2) return null
+    return { collection: parts[0]!, id: parts.slice(1).join('/') }
+  }
+
+  /**
    * Every key under `pfx`. ListObjectsV2 stops at 1000 keys a page, so follow
    * NextContinuationToken until the listing is complete, as listBundles does
    * (family#146).
@@ -312,15 +323,9 @@ export function toAwsS3(options: S3Options): NoydbStore {
       const snapshot: VaultSnapshot = {}
 
       for (const key of await listKeys(pfx)) {
-        if (!key.endsWith('.json')) continue
-
-        const relativePath = key.slice(pfx.length)
-        const parts = relativePath.split('/')
-        if (parts.length !== 2) continue
-
-        const collection = parts[0]!
-        const id = parts[1]!.slice(0, -5)
-        if (collection.startsWith('_')) continue
+        const parsed = parseRecordKey(pfx, key)
+        if (!parsed || parsed.collection.startsWith('_')) continue
+        const { collection, id } = parsed
 
         const getResult = await client.send(new GetObjectCommand({
           Bucket: bucket,
@@ -338,9 +343,20 @@ export function toAwsS3(options: S3Options): NoydbStore {
     },
 
     async saveAll(vault, data) {
+      // family#147 — saveAll REPLACES. No multi-object transaction in S3, so
+      // WRITE FIRST, PRUNE SECOND: a torn call leaves stale extra records (re-run
+      // the restore) instead of a hole. Underscore collections are never pruned.
       for (const [collection, records] of Object.entries(data)) {
         for (const [id, envelope] of Object.entries(records)) {
           await this.put(vault, collection, id, envelope)
+        }
+      }
+      const pfx = compPrefix(vault)
+      for (const key of await listKeys(pfx)) {
+        const parsed = parseRecordKey(pfx, key)
+        if (!parsed || parsed.collection.startsWith('_')) continue
+        if (!Object.hasOwn(data[parsed.collection] ?? {}, parsed.id)) {
+          await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
         }
       }
     },
