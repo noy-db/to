@@ -181,8 +181,21 @@ export function toAwsDynamo(options: DynamoOptions): NoydbStore {
     return clientPromise
   }
 
+  /**
+   * The sort key is `{collection}#{id}` and parseSk splits at the FIRST `#`, so
+   * a `#` in a collection name would make `list('a')` also match collection
+   * `a#b` and misattribute its records (family#148). Ids may keep `#`: they
+   * sit after the split point.
+   */
+  function collPrefix(collection: string): string {
+    if (collection.includes('#')) {
+      throw new Error(`@noy-db/to-aws-dynamo: collection names must not contain '#', got ${JSON.stringify(collection)}`)
+    }
+    return `${collection}#`
+  }
+
   function sk(collection: string, id: string): string {
-    return `${collection}#${id}`
+    return `${collPrefix(collection)}${id}`
   }
 
   function parseSk(sortKey: string): { collection: string; id: string } {
@@ -297,7 +310,7 @@ export function toAwsDynamo(options: DynamoOptions): NoydbStore {
           KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
           ExpressionAttributeValues: {
             ':pk': vault,
-            ':prefix': `${collection}#`,
+            ':prefix': collPrefix(collection),
           },
           ...(startKey && { ExclusiveStartKey: startKey }),
         })) as { Items?: Record<string, unknown>[]; LastEvaluatedKey?: Record<string, unknown> }
@@ -455,7 +468,7 @@ export function toAwsDynamo(options: DynamoOptions): NoydbStore {
         KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
         ExpressionAttributeValues: {
           ':pk': vault,
-          ':prefix': `${collection}#`,
+          ':prefix': collPrefix(collection),
         },
         Limit: limit,
       }
