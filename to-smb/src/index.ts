@@ -150,10 +150,11 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
    * The pre-family#174 path: encoding `%` moved every existing id containing
    * one, so reads and deletes also try the raw name. ⛔ Null whenever the raw
    * name is ANOTHER id's encoded name (`a%00b` is where `a\x00b` lives), or a
-   * fallback would read or delete that record. Null too when nothing moved.
+   * fallback would read or delete that record. Null too when nothing moved,
+   * and for an id holding a NUL, which no pre-encoding record could carry.
    */
   const legacyRecordPath = (v: string, c: string, id: string): string | null =>
-    encodeId(decodeId(id)) === id ? null : join(collPath(v, c), `${id}.json`)
+    id.includes('\0') || !id.includes('%') || encodeId(decodeId(id)) === id ? null : join(collPath(v, c), `${id}.json`)
 
   async function ensureDir(path: string): Promise<void> {
     // SMB mkdir is not always recursive — walk parents.

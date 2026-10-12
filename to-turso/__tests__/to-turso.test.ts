@@ -3,7 +3,7 @@ import type { EncryptedEnvelope } from '@noy-db/hub'
 import { ConflictError } from '@noy-db/hub'
 import { toTurso, type LibsqlClient } from '../src/index.js'
 
-interface Row {
+type Row = {
   vault: string; collection: string; id: string; v: number; ts: string; env?: string | null
   iv?: string | null; data?: string | null
   by?: string | null; tier?: number | null; elevated_by?: string | null; det?: string | null; del?: number | null

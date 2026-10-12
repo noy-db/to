@@ -152,11 +152,13 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
    * The pre-family#174 URL: encoding `%` moved every existing id containing
    * one, so reads and deletes also try the raw name. ⛔ Null whenever the raw
    * name is ANOTHER id's encoded name (`a%00b` is where `a\x00b` lives), or a
-   * fallback would read or delete that record. Null too when nothing moved.
+   * fallback would read or delete that record. Null too when nothing moved,
+   * and for an id holding a NUL, which no pre-encoding record could carry.
    */
   function legacyUrlFor(vault: string, collection: string, id: string): string | null {
     idSegments(id) // validates the id; the raw components are what moved
     const raw = id.split('/')
+    if (id.includes('\0') || !id.includes('%')) return null
     return raw.every(p => encodeIdComponent(decodeIdComponent(p)) === p) ? null : urlForParts(vault, collection, raw)
   }
 

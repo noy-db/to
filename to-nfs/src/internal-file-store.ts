@@ -92,10 +92,11 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
    * The pre-family#174 path: encoding `%` moved every existing id containing
    * one, so reads and deletes also try the raw name. ⛔ Null whenever the raw
    * name is ANOTHER id's encoded name (`a%00b` is where `a\x00b` lives), or a
-   * fallback would read or delete that record. Null too when nothing moved.
+   * fallback would read or delete that record. Null too when nothing moved,
+   * and for an id holding a NUL, which no pre-encoding record could carry.
    */
   function legacyRecordPath(vault: string, collection: string, id: string): string | null {
-    if (encodeId(decodeId(id)) === id) return null
+    if (id.includes('\0') || !id.includes('%') || encodeId(decodeId(id)) === id) return null
     return join(collectionDir(vault, collection), `${id}.json`)
   }
 
