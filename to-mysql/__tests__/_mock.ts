@@ -70,7 +70,8 @@ export function mockClient(rowMap: Map<string, Row> = new Map()): MysqlClient & 
         rowMap.delete(key(vault, collection, id))
       } else if (p.length === 1) {
         const [vault] = p as [string]
-        for (const [k, r] of rowMap) if (r.vault === vault) rowMap.delete(k)
+        const keepUnderscore = normalized.includes("<> '_'")
+        for (const [k, r] of rowMap) if (r.vault === vault && !(keepUnderscore && r.collection.startsWith('_'))) rowMap.delete(k)
       }
       return [[], null]
     }

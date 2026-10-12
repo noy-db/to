@@ -50,7 +50,8 @@ function mockLibsql(): LibsqlClient & { rowMap: Map<string, Row> } {
         rowMap.delete(key(vault, collection, id))
       } else if (args.length === 1) {
         const [vault] = args as [string]
-        for (const [k, r] of rowMap) if (r.vault === vault) rowMap.delete(k)
+        const keepUnderscore = normalized.includes("<> '_'")
+        for (const [k, r] of rowMap) if (r.vault === vault && !(keepUnderscore && r.collection.startsWith('_'))) rowMap.delete(k)
       }
       return { rows: [] }
     }

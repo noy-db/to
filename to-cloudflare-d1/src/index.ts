@@ -283,8 +283,10 @@ export function toCloudflareD1(options: D1StoreOptions): NoydbStore {
 
     async saveAll(vault, data) {
       await ensureSchema()
+      // family#147 — saveAll REPLACES every non-underscore collection; an underscore
+      // one (`_keyring`) is never pruned, only overwritten when the snapshot carries it.
       const statements: D1PreparedStatement[] = [
-        db.prepare(`DELETE FROM ${tableName} WHERE vault = ?`).bind(vault),
+        db.prepare(`DELETE FROM ${tableName} WHERE vault = ? AND substr(collection, 1, 1) <> '_'`).bind(vault),
       ]
       for (const [collection, recs] of Object.entries(data)) {
         for (const [id, envelope] of Object.entries(recs)) {

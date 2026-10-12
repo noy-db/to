@@ -353,8 +353,10 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
       await ensureSchema()
       const client = await getClient()
       if (client.batch) {
+        // family#147 — saveAll REPLACES every non-underscore collection; an underscore
+        // one (`_keyring`) is never pruned, only overwritten when the snapshot carries it.
         const statements: { sql: string; args?: readonly unknown[] }[] = [
-          { sql: `DELETE FROM ${tableName} WHERE vault = ?`, args: [vault] },
+          { sql: `DELETE FROM ${tableName} WHERE vault = ? AND substr(collection, 1, 1) <> '_'`, args: [vault] },
         ]
         for (const [collection, recs] of Object.entries(data)) {
           for (const [id, envelope] of Object.entries(recs)) {
@@ -371,11 +373,24 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
         await client.batch(statements)
         return
       }
-      // Fallback: sequential execute when the client lacks batch.
-      await client.execute({ sql: `DELETE FROM ${tableName} WHERE vault = ?`, args: [vault] })
+      // Fallback: sequential execute when the client lacks batch — no
+      // transaction, so WRITE FIRST, PRUNE SECOND: a torn call leaves stale
+      // extra records (re-run the restore) rather than a hole. loadAll skips
+      // underscore collections, so they are never pruned.
+      const before = await store.loadAll(vault)
       for (const [collection, recs] of Object.entries(data)) {
         for (const [id, envelope] of Object.entries(recs)) {
           await upsert(vault, collection, id, envelope)
+        }
+      }
+      for (const [collection, recs] of Object.entries(before)) {
+        for (const id of Object.keys(recs)) {
+          if (data[collection]?.[id] === undefined) {
+            await client.execute({
+              sql: `DELETE FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
+              args: [vault, collection, id],
+            })
+          }
         }
       }
     },

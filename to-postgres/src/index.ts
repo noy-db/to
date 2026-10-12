@@ -268,7 +268,9 @@ export function toPostgres(options: PostgresStoreOptions): NoydbStore {
     async saveAll(vault, data) {
       await ensureSchema()
       await inTransaction(async (q) => {
-        await q.query(`DELETE FROM ${tableName} WHERE vault = $1`, [vault])
+        // family#147 — saveAll REPLACES every non-underscore collection; an underscore
+        // one (`_keyring`) is never pruned, only overwritten when the snapshot carries it.
+        await q.query(`DELETE FROM ${tableName} WHERE vault = $1 AND substr(collection, 1, 1) <> '_'`, [vault])
         for (const [collection, recs] of Object.entries(data)) {
           for (const [id, envelope] of Object.entries(recs)) {
             await upsert(q, vault, collection, id, envelope)

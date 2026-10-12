@@ -178,8 +178,10 @@ export function toSqlite(options: SqliteStoreOptions): NoydbStore {
       const existing = db
         .prepare(`SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`)
         .get(vault, collection, id) as { v: number } | undefined
-      if (existing && existing.v !== expectedVersion) {
-        throw new ConflictError(existing.v, `Version conflict: expected ${expectedVersion}, found ${existing.v}`)
+      // family#147 — an absent id is at version 0: `0` creates, `N > 0` conflicts.
+      const current = existing?.v ?? 0
+      if (current !== expectedVersion) {
+        throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
       }
     }
 
@@ -251,7 +253,9 @@ export function toSqlite(options: SqliteStoreOptions): NoydbStore {
     async saveAll(vault, data) {
       db.exec('BEGIN IMMEDIATE')
       try {
-        db.prepare(`DELETE FROM ${tableName} WHERE vault = ?`).run(vault)
+        // family#147 — saveAll REPLACES every non-underscore collection; an underscore
+        // one (`_keyring`) is never pruned, only overwritten when the snapshot carries it.
+        db.prepare(`DELETE FROM ${tableName} WHERE vault = ? AND substr(collection, 1, 1) <> '_'`).run(vault)
         for (const [collection, recs] of Object.entries(data)) {
           for (const [id, envelope] of Object.entries(recs)) {
             upsert(vault, collection, id, envelope)
@@ -308,9 +312,8 @@ export function toSqlite(options: SqliteStoreOptions): NoydbStore {
               const existing = db
                 .prepare(`SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`)
                 .get(op.vault, op.collection, op.id) as { v: number } | undefined
-              if (existing && existing.v !== op.expectedVersion) {
-                throw new ConflictError(existing.v)
-              }
+              const current = existing?.v ?? 0
+              if (current !== op.expectedVersion) throw new ConflictError(current)
             }
             db.prepare(`DELETE FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`)
               .run(op.vault, op.collection, op.id)

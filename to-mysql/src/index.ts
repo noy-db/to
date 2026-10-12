@@ -270,7 +270,9 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
     async saveAll(vault, data) {
       await ensureSchema()
       await inTransaction(async (q) => {
-        await q.execute(`DELETE FROM ${tableName} WHERE vault = ?`, [vault])
+        // family#147 — saveAll REPLACES every non-underscore collection; an underscore
+        // one (`_keyring`) is never pruned, only overwritten when the snapshot carries it.
+        await q.execute(`DELETE FROM ${tableName} WHERE vault = ? AND substr(collection, 1, 1) <> '_'`, [vault])
         for (const [collection, recs] of Object.entries(data)) {
           for (const [id, envelope] of Object.entries(recs)) {
             await upsert(q, vault, collection, id, envelope)

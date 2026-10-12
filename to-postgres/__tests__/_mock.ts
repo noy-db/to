@@ -68,7 +68,8 @@ export function mockClient(rows: Map<string, Row> = new Map()): PostgresClient &
         rows.delete(key(vault, collection, id))
       } else if (p.length === 1) {
         const [vault] = p as [string]
-        for (const [k, r] of rows) if (r.vault === vault) rows.delete(k)
+        const keepUnderscore = normalized.includes("<> '_'")
+        for (const [k, r] of rows) if (r.vault === vault && !(keepUnderscore && r.collection.startsWith('_'))) rows.delete(k)
       }
       return { rows: [] }
     }
