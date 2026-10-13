@@ -120,6 +120,12 @@ writes a `._<name>` AppleDouble sidecar beside every file, so `._inv-1.json` sit
 `inv-1.json`. `list`, `listPage` and `loadAll` skip every name starting with a dot, and a
 record id starting with a dot is refused.
 
+**Ids that differ only by case are refused on a case-folding volume.** APFS, NTFS and most
+SMB shares fold case, so `abc.json` would open an existing `Abc.json` and replace that record.
+The store probes the volume once, on its first write (never at construction, so it still never
+prompts), and then refuses a `put` or `saveAll` whose id differs from an existing one only by
+case. Each write on such a volume costs one extra listing of its collection.
+
 ### Sizing — the cost is per file, not per byte
 
 Each record is its own file, and every file costs several round trips: open, write, flush

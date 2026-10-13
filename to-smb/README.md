@@ -16,6 +16,14 @@ pnpm add @noy-db/hub @noy-db/to-smb
 
 SMB/CIFS network file store for noy-db. Works against Windows file servers, NAS devices (Synology/QNAP/Netgear), and corporate shared drives via NTLM or Kerberos auth — no OS mount required.
 
+## Ids that differ only by case
+
+Most SMB shares fold case, so `abc.json` would open an existing `Abc.json` and replace that record. The store
+probes the share once, on its first write, and on a case-folding share refuses a `put` or
+`saveAll` whose id differs from an existing one only by case, in any `/`-separated component.
+Each write on such a share then costs one directory listing per id component. On a
+case-sensitive share nothing changes.
+
 ## Status
 
 **Pre-release.** API may change before `1.0`.

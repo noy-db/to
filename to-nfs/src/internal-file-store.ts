@@ -169,28 +169,35 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
   /**
    * family#177: on a case-folding mount `abc.json` OPENS the existing
    * `Abc.json`, so the write would replace that record's body while the file
-   * keeps the other id's name. Refused, as to-file refuses it.
+   * keeps the other id's name. Refused, as to-file refuses it. Every id
+   * component is checked (family#215), since a folded directory (`_idx/Name`
+   * against `_idx/name`) lands in the other id's tree the same way.
    */
   async function assertNoCaseCollision(vault: string, collection: string, id: string): Promise<void> {
     if (!(await filesystemFoldsCase())) return
-    const path = recordPath(vault, collection, id)
-    const leaf = path.slice(dirname(path).length + 1)
-    let entries: string[]
-    try {
-      entries = await readdir(dirname(path))
-    } catch {
-      return // no directory yet: nothing to collide with
-    }
-    const folded = leaf.toLowerCase()
-    for (const entry of entries) {
-      if (entry !== leaf && entry.toLowerCase() === folded) {
+    assertId(id)
+    const parts = encodeId(id).split('/')
+    parts[parts.length - 1] += '.json'
+    let current = collectionDir(vault, collection)
+    for (const [i, part] of parts.entries()) {
+      let entries: string[]
+      try {
+        entries = await readdir(current)
+      } catch {
+        return // no directory yet: nothing to collide with
+      }
+      const clash = entries.find(e => e !== part && e.toLowerCase() === part.toLowerCase())
+      if (clash !== undefined) {
+        const existing = [...parts.slice(0, i), clash].join('/').replace(/\.json$/, '')
         throw new Error(
           `@noy-db/to-nfs: record id ${JSON.stringify(id)} case-folds onto the existing ` +
-          `${JSON.stringify(decodeId(entry.slice(0, -'.json'.length)))} on a case-insensitive filesystem, ` +
+          `${JSON.stringify(decodeId(existing))} on a case-insensitive filesystem, ` +
           'so writing it would replace that record. Use ids that differ by more than case, ' +
           'or mount the store on a case-sensitive filesystem.',
         )
       }
+      if (!entries.includes(part)) return // nothing deeper exists to collide with
+      current = join(current, part)
     }
   }
 
@@ -283,6 +290,9 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
         await ensureDir(collectionDir(vault, collName))
         for (const [id, envelope] of Object.entries(records)) {
           const path = recordPath(vault, collName, id)
+          // Without this, `abc` lands in an existing `Abc.json` and the prune
+          // below then deletes `Abc`, taking the snapshot's own record with it.
+          await assertNoCaseCollision(vault, collName, id)
           await ensureDir(dirname(path))
           await writeFile(path, serialize(envelope), 'utf-8')
           await removeLegacy(vault, collName, id)

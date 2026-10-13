@@ -16,6 +16,14 @@ pnpm add @noy-db/hub @noy-db/to-ssh
 
 SSH/SFTP store for noy-db — remote encrypted document storage over SSH using public-key auth. Any Linux/macOS server with sshd running becomes a noy-db backend; leverages existing ~/.ssh keys or ssh-agent. Key-only auth (no passwords).
 
+## Ids that differ only by case
+
+An SFTP server folds case when its disk does (APFS, NTFS), so `abc.json` would open an existing `Abc.json` and replace that record. The store
+probes the server once, on its first write, and on a case-folding server refuses a `put` or
+`saveAll` whose id differs from an existing one only by case, in any `/`-separated component.
+Each write on such a server then costs one directory listing per id component. On a
+case-sensitive server nothing changes.
+
 ## Status
 
 **Pre-release.** API may change before `1.0`.

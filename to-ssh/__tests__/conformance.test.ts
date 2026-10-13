@@ -9,3 +9,8 @@ import { mockSftp } from './_mock.js'
 runStoreConformanceTests('to-ssh (in-memory SFTP handle mock)', async () =>
   toSsh({ sftp: mockSftp(), remotePath: 'noydb' }),
 )
+
+// family#215 — the same contract over a target that folds case.
+runStoreConformanceTests('to-ssh (case-folding SFTP handle mock)', async () =>
+  toSsh({ sftp: mockSftp({ foldCase: true }) }),
+)

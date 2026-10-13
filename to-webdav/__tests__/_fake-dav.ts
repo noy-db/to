@@ -5,11 +5,28 @@
  * multi-status XML with `<d:href>` entries (self + immediate children),
  * hrefs percent-encoded exactly as a real server echoes them.
  */
-export function fakeDav(): { fetch: typeof fetch; files: Map<string, string> } {
+export function fakeDav(options: { foldCase?: boolean } = {}): { fetch: typeof fetch; files: Map<string, string> } {
   // Keys are decoded pathname segments joined with '/', e.g.
   // 'vault/collection/id.json'.
   const files = new Map<string, string>()
   const dirs = new Set<string>()
+
+  /**
+   * `foldCase` (family#215): a server that folds case, as one backed by NTFS
+   * or APFS does. Each path segment resolves to an existing entry's spelling
+   * when one matches case-insensitively, so a PUT of `abc.json` beside
+   * `Abc.json` overwrites it and the listing still says `Abc`.
+   */
+  const canon = (path: string): string => {
+    if (!options.foldCase) return path
+    const known = [...dirs, ...files.keys()]
+    let out = ''
+    for (const seg of path.split('/').filter(Boolean)) {
+      const cand = out ? `${out}/${seg}` : seg
+      out = known.find(k => k.toLowerCase() === cand.toLowerCase()) ?? cand
+    }
+    return out
+  }
 
   const res = (status: number, body = '', headers: Record<string, string> = {}) =>
     new Response(body || null, { status, headers })
@@ -20,12 +37,12 @@ export function fakeDav(): { fetch: typeof fetch; files: Map<string, string> } {
   const impl = (async (rawUrl: unknown, init?: { method?: string; body?: string }) => {
     const url = new URL(String(rawUrl))
     const method = init?.method ?? 'GET'
-    const decodedPath = url.pathname
+    const decodedPath = canon(url.pathname
       .replace(/\/+$/, '')
       .split('/')
       .filter(Boolean)
       .map(decodeURIComponent)
-      .join('/')
+      .join('/'))
 
     if (method === 'PUT') {
       files.set(decodedPath, init?.body ?? '')

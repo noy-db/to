@@ -281,6 +281,51 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
     }
   }
 
+  /**
+   * Whether the volume folds case (family#215), as APFS, NTFS and most SMB
+   * shares do. Probed once, on the first write and never at construction, so
+   * the store still never prompts: create `.noydb-case-probe-Aa` at the root, look up
+   * `.noydb-case-probe-aa`. A probe ERROR is not cached as "case-sensitive": on a network
+   * volume a transient failure would switch the guard off for good.
+   */
+  let foldsCase: Promise<boolean> | null = null
+  function volumeFoldsCase(): Promise<boolean> {
+    foldsCase ??= (async () => {
+      await root.getFileHandle('.noydb-case-probe-Aa', { create: true })
+      try {
+        await root.getFileHandle('.noydb-case-probe-aa')
+        return true
+      } catch (error) {
+        if (errorName(error) === 'NotFoundError') return false
+        throw error
+      } finally {
+        await root.removeEntry('.noydb-case-probe-Aa').catch(() => undefined)
+      }
+    })().catch((error: unknown) => {
+      foldsCase = null
+      throw error
+    })
+    return foldsCase
+  }
+
+  /**
+   * family#177 on a case-folding volume: `abc.json` opens the existing
+   * `Abc.json`, so the write would replace that record while the file keeps
+   * the other id's name. Refused, as to-file and to-nfs refuse it.
+   */
+  async function assertNoCaseCollision(collectionDir: DirectoryHandleLike, id: string, filename: string): Promise<void> {
+    if (!(await volumeFoldsCase())) return
+    for await (const [name] of collectionDir.entries()) {
+      if (name !== filename && name.toLowerCase() === filename.toLowerCase()) {
+        throw new Error(
+          `@noy-db/to-browser-fs: record id ${JSON.stringify(id)} case-folds onto the existing ` +
+          `${JSON.stringify(name.slice(0, -'.json'.length))} on a case-insensitive volume, so writing it ` +
+          'would replace that record. Use ids that differ by more than case.',
+        )
+      }
+    }
+  }
+
   /** Ids of the `.json` records in a collection — `.crswap` orphans and dot-files excluded. */
   async function recordIds(collectionDir: DirectoryHandleLike): Promise<string[]> {
     const ids: string[] = []
@@ -328,6 +373,7 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
       const filename = recordFile(id)
       try {
         const collectionDir = await dir([vault, collection], true)
+        await assertNoCaseCollision(collectionDir, id, filename)
 
         if (expectedVersion !== undefined) {
           // Read-compare-write. A plain directory offers no compare-and-set,
@@ -420,6 +466,9 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
         for (const [collectionName, records] of Object.entries(data)) {
           const collectionDir = await dir([vault, collectionName], true)
           for (const [id, envelope] of Object.entries(records)) {
+            // Without this, `abc` lands in an existing `Abc.json` and the prune
+            // below then deletes `Abc`, taking the snapshot's own record with it.
+            await assertNoCaseCollision(collectionDir, id, recordFile(id))
             await writeRecord(collectionDir, id, envelope)
           }
         }
