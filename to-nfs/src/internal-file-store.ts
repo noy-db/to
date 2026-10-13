@@ -151,13 +151,16 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
    * probed once by creating `…-Aa` and looking for `…-aa`. Same probe as
    * to-file's.
    */
+  // Per instance, lowercase: two stores probing one share at once must not
+  // remove each other's sentinel, or one reads "case-sensitive" for good.
+  const probeTag = Math.random().toString(36).slice(2, 10)
   let foldsCase: boolean | null = null
   async function filesystemFoldsCase(): Promise<boolean> {
     if (foldsCase !== null) return foldsCase
-    const probe = join(dir, '.noydb-case-probe-Aa')
+    const probe = join(dir, `.noydb-case-probe-${probeTag}-Aa`)
     try {
       await mkdir(probe, { recursive: true })
-      foldsCase = await stat(join(dir, '.noydb-case-probe-aa')).then(() => true, () => false)
+      foldsCase = await stat(join(dir, `.noydb-case-probe-${probeTag}-aa`)).then(() => true, () => false)
     } catch {
       foldsCase = false
     } finally {

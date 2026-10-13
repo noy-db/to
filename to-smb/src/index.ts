@@ -200,14 +200,17 @@ export function toSmb(options: SmbStoreOptions): NoydbStore {
    * as "case-sensitive": over a network a transient failure would switch the
    * guard off for good, so the next write probes again.
    */
+  // Per instance, lowercase: two stores probing one share at once must not
+  // remove each other's sentinel, or one reads "case-sensitive" for good.
+  const probeTag = Math.random().toString(36).slice(2, 10)
   let foldsCase: Promise<boolean> | null = null
   function shareFoldsCase(): Promise<boolean> {
     foldsCase ??= (async () => {
-      const probe = join(root, '.noydb-case-probe-Aa')
+      const probe = join(root, `.noydb-case-probe-${probeTag}-Aa`)
       await ensureDir(root)
       await client.writeFile(probe, '')
       try {
-        return (await client.readFile(join(root, '.noydb-case-probe-aa'))) !== null
+        return (await client.readFile(join(root, `.noydb-case-probe-${probeTag}-aa`))) !== null
       } finally {
         await client.unlink(probe).catch(() => undefined)
       }

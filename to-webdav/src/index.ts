@@ -256,10 +256,13 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
    * "case-sensitive": over a network a transient failure would switch the
    * guard off for good, so the next write probes again.
    */
+  // Per instance, lowercase: two stores probing one share at once must not
+  // remove each other's sentinel, or one reads "case-sensitive" for good.
+  const probeTag = Math.random().toString(36).slice(2, 10)
   let foldsCase: Promise<boolean> | null = null
   function serverFoldsCase(): Promise<boolean> {
     const probeUrl = (suffix: string): string =>
-      `${baseUrl}/${[prefix, `.noydb-case-probe-${suffix}`].filter(Boolean).map(encodeURIComponent).join('/')}`
+      `${baseUrl}/${[prefix, `.noydb-case-probe-${probeTag}-${suffix}`].filter(Boolean).map(encodeURIComponent).join('/')}`
     foldsCase ??= (async () => {
       if (prefix) await fetchImpl(`${baseUrl}/${encodeURIComponent(prefix)}/`, { method: 'MKCOL', headers: await requestHeaders() })
       const put = await fetchImpl(probeUrl('Aa'), { method: 'PUT', headers: await requestHeaders(), body: '' })

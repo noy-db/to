@@ -284,22 +284,25 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
   /**
    * Whether the volume folds case (family#215), as APFS, NTFS and most SMB
    * shares do. Probed once, on the first write and never at construction, so
-   * the store still never prompts: create `.noydb-case-probe-Aa` at the root, look up
-   * `.noydb-case-probe-aa`. A probe ERROR is not cached as "case-sensitive": on a network
+   * the store still never prompts: create `.noydb-case-probe-<tag>-Aa` at the root, look up
+   * `.noydb-case-probe-<tag>-aa`. A probe ERROR is not cached as "case-sensitive": on a network
    * volume a transient failure would switch the guard off for good.
    */
+  // Per instance, lowercase: two stores probing one share at once must not
+  // remove each other's sentinel, or one reads "case-sensitive" for good.
+  const probeTag = Math.random().toString(36).slice(2, 10)
   let foldsCase: Promise<boolean> | null = null
   function volumeFoldsCase(): Promise<boolean> {
     foldsCase ??= (async () => {
-      await root.getFileHandle('.noydb-case-probe-Aa', { create: true })
+      await root.getFileHandle(`.noydb-case-probe-${probeTag}-Aa`, { create: true })
       try {
-        await root.getFileHandle('.noydb-case-probe-aa')
+        await root.getFileHandle(`.noydb-case-probe-${probeTag}-aa`)
         return true
       } catch (error) {
         if (errorName(error) === 'NotFoundError') return false
         throw error
       } finally {
-        await root.removeEntry('.noydb-case-probe-Aa').catch(() => undefined)
+        await root.removeEntry(`.noydb-case-probe-${probeTag}-Aa`).catch(() => undefined)
       }
     })().catch((error: unknown) => {
       foldsCase = null
