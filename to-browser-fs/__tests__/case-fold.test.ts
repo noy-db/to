@@ -22,6 +22,25 @@ describe('on a case-folding volume (family#215)', () => {
     expect((await store.get('acme', 'invoices', 'Abc'))?._data).toBe('upper')
   })
 
+  test('another store probing in between cannot make this one read "case-sensitive"', async () => {
+    const root = fakeRoot({ foldCase: true })
+    const other = toBrowserFs({ handle: root })
+    const getFileHandle = root.getFileHandle.bind(root)
+    let interleave = true
+    root.getFileHandle = async (name, options) => {
+      if (interleave && name.endsWith('-aa')) {
+        // Our sentinel is created; the other store's whole probe runs now.
+        interleave = false
+        await other.put('acme', 'invoices', 'Two', env('2'))
+      }
+      return getFileHandle(name, options)
+    }
+    const store = toBrowserFs({ handle: root })
+    await store.put('acme', 'invoices', 'One', env('1'))
+
+    await expect(store.put('acme', 'invoices', 'one', env('x'))).rejects.toThrow(/case-folds/)
+  })
+
   test('rewrites the same id in its own spelling', async () => {
     const store = toBrowserFs({ handle: fakeRoot({ foldCase: true }) })
     await store.put('acme', 'invoices', 'Abc', env('one'))

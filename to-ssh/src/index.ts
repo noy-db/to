@@ -211,14 +211,17 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
    * as "case-sensitive": over a network a transient failure would switch the
    * guard off for good, so the next write probes again.
    */
+  // Per instance, lowercase: two stores probing one share at once must not
+  // remove each other's sentinel, or one reads "case-sensitive" for good.
+  const probeTag = Math.random().toString(36).slice(2, 10)
   let foldsCase: Promise<boolean> | null = null
   function shareFoldsCase(): Promise<boolean> {
     foldsCase ??= (async () => {
-      const probe = '/' + pathJoin(root, '.noydb-case-probe-Aa')
+      const probe = '/' + pathJoin(root, `.noydb-case-probe-${probeTag}-Aa`)
       await ensureDir('/' + root)
       await sftp.writeFile(probe, '')
       try {
-        return (await sftp.readFile('/' + pathJoin(root, '.noydb-case-probe-aa'))) !== null
+        return (await sftp.readFile('/' + pathJoin(root, `.noydb-case-probe-${probeTag}-aa`))) !== null
       } finally {
         await sftp.unlink(probe).catch(() => undefined)
       }

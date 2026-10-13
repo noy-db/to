@@ -31,6 +31,24 @@ describe('to-webdav on a case-folding server (family#215)', () => {
     expect((await store.get('v', 'c', 'Abc'))?._data).toBe('upper')
   })
 
+  it('another store probing in between cannot make this one read "case-sensitive"', async () => {
+    const dav = fakeDav({ foldCase: true })
+    const other = toWebdav({ baseUrl, fetch: dav.fetch })
+    let interleave = true
+    const hooked = (async (url: unknown, init?: { method?: string }) => {
+      if (interleave && String(url).endsWith('-aa') && (init?.method ?? 'GET') === 'GET') {
+        // Our sentinel is written; the other store's whole probe runs now.
+        interleave = false
+        await other.put('v', 'c', 'Two', env('2'))
+      }
+      return dav.fetch(url as string, init as RequestInit)
+    }) as unknown as typeof fetch
+    const store = toWebdav({ baseUrl, fetch: hooked })
+    await store.put('v', 'c', 'One', env('1'))
+
+    await expect(store.put('v', 'c', 'one', env('x'))).rejects.toThrow(/case-folds/)
+  })
+
   it('rewrites the same id in its own spelling', async () => {
     const store = toWebdav({ baseUrl, fetch: fakeDav({ foldCase: true }).fetch })
     await store.put('v', 'c', 'Abc', env('one'))

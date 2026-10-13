@@ -30,6 +30,25 @@ describe('to-ssh on a case-folding share (family#215)', () => {
     expect((await store.get('v', 'c', 'Abc'))?._data).toBe('upper')
   })
 
+  it('another store probing in between cannot make this one read "case-sensitive"', async () => {
+    const handle = mockSftp({ foldCase: true })
+    const other = toSsh({ sftp: handle })
+    const readFile = handle.readFile.bind(handle)
+    let interleave = true
+    handle.readFile = async (path) => {
+      if (interleave && path.endsWith('-aa')) {
+        // Our sentinel is written; the other store's whole probe runs now.
+        interleave = false
+        await other.put('v', 'c', 'Two', env('2'))
+      }
+      return readFile(path)
+    }
+    const store = toSsh({ sftp: handle })
+    await store.put('v', 'c', 'One', env('1'))
+
+    await expect(store.put('v', 'c', 'one', env('x'))).rejects.toThrow(/case-folds/)
+  })
+
   it('rewrites the same id in its own spelling', async () => {
     const store = toSsh({ sftp: mockSftp({ foldCase: true }) })
     await store.put('v', 'c', 'Abc', env('one'))
