@@ -24,9 +24,10 @@ exactly when the client exposes `batch`.
 
 - `client` **with** `batch` (every real `@libsql/client`) → `txAtomic: true`; `tx()` submits
   one batch with in-batch `expectedVersion` guards — all-or-nothing, mismatch throws `ConflictError`.
-- `client` **without** `batch` (duck-typed injections) → `txAtomic: false`; `tx()` falls back
-  to sequential statements with **no** atomicity guarantee, and the hub will not delegate to it.
-- `clientFactory` path → `true` (factory-built clients are real `@libsql/client` instances).
+- `client` **without** `batch` (duck-typed injections) → `txAtomic: false`, and the store has
+  **no** `tx()`: a sequential one could not be atomic. The hub uses its own path instead.
+- `clientFactory` path → `true` (factory-built clients are real `@libsql/client` instances). The
+  factory must return a client with `batch`; if it does not, `tx()` throws before writing anything.
 
 ## Status
 
