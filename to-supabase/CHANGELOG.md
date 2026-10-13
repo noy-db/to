@@ -1,5 +1,12 @@
 # @noy-db/to-supabase
 
+## 0.10.0-pre.2
+
+- Inherits every `to-postgres` change in this release, including NUL-bearing ids, conditional CAS, pooled transactions and a `saveAll` that spares `_keyring`.
+- Documentation: the README install line now names `@noy-db/to-postgres`, and no longer promises Supabase Storage blob routing, which the source does not implement.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

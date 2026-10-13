@@ -1,5 +1,11 @@
 # Changelog — to-memory
 
+## 0.10.0-pre.2
+
+- **An absent record is at version 0** (noy-db/family#147): `put` with `expectedVersion > 0` against a missing record throws `ConflictError` instead of writing. This matches its own `tx()`.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

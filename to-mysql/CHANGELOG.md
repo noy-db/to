@@ -1,7 +1,11 @@
 # @noy-db/to-mysql
 
-## Unreleased
+## 0.10.0-pre.2
 
+- **`saveAll` and `tx` run on one pooled connection** (noy-db/family#144). Over a pool, `BEGIN`, the `DELETE`, each upsert and `COMMIT`/`ROLLBACK` could each land on a different connection, so a failure mid-`saveAll` left the vault emptied. A plain client keeps the old path.
+- **CAS is one conditional statement** (noy-db/family#145). `casAtomic: true` was declared but the store read, compared in JS, then wrote, so two writers holding the same `expectedVersion` could both pass, and `vault.sequence()` could hand out duplicates. `expectedVersion: 0` is now a plain `INSERT` whose duplicate-key error becomes `ConflictError`, `N` a single `UPDATE … WHERE v = N`, and a versioned `tx` delete is conditional too.
+- **`tableName` must be a plain identifier** (`^[A-Za-z_][A-Za-z0-9_]*$`), refused at construction (noy-db/family#148). It is interpolated into every statement and can arrive from a descriptor's `address.table`.
+- **`saveAll` no longer deletes `_keyring`** (noy-db/family#147). Its vault-wide `DELETE` now spares underscore collections, inside the same transaction as the writes, so the snapshot replaces every other collection and an empty record set empties one.
 - **New tables compare ids byte-exact** (noy-db/family#174). `vault`, `collection` and `id` are
   created `COLLATE utf8mb4_bin`. Under the server default `utf8mb4_0900_ai_ci`, ids that differed
   only in case (`Abc`/`abc`), accent (`café`/`cafe`) or an ignorable character such as NUL
@@ -12,6 +16,8 @@
 - **`listPage` works on MySQL 8.0.22+.** `LIMIT` is now a validated integer in the SQL text.
   A numeric `LIMIT ?` through a prepared `execute()` was refused with "Incorrect arguments to
   mysqld_stmt_execute".
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
 
 ## 0.10.0-pre.0
 

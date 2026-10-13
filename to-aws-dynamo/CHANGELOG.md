@@ -1,5 +1,14 @@
 # Changelog — to-aws-dynamo
 
+## 0.10.0-pre.2
+
+- **`list()` and `loadAll()` follow `LastEvaluatedKey`** (noy-db/family#146). Records past the first 1 MB page vanished with no error, so a `loadAll`-based backup of a large vault was silently partial.
+- **A collection name may not contain `#`** (noy-db/family#148). The sort key is `{collection}#{id}`, so `list('a')` also matched collection `a#b`. Ids may still contain `#`.
+- **`saveAll` replaces** (noy-db/family#147): it writes first, then prunes records absent from the snapshot, so an omitted or empty collection no longer survives a restore. Underscore collections are never pruned.
+- **An absent record is at version 0** (noy-db/family#147): `put` with `expectedVersion > 0` against a missing item throws `ConflictError`; `attribute_not_exists` is kept for `expectedVersion: 0` only.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.
