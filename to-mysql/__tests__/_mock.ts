@@ -94,7 +94,8 @@ export function mockClient(rowMap: Map<string, Row> = new Map()): MysqlClient & 
       return [ids as unknown as T[], null]
     }
     if (normalized.includes('FROM') && normalized.includes('WHERE VAULT = ? AND COLLECTION = ? AND ID > ?')) {
-      const [vault, collection, afterId, limit] = p as [string, string, string, number]
+      const [vault, collection, afterId] = p as [string, string, string]
+      const limit = Number(/LIMIT (\d+)$/.exec(normalized)![1])
       const matched = [...rowMap.values()]
         .filter(r => r.vault === vault && r.collection === collection && r.id > afterId)
         .sort((a, b) => a.id.localeCompare(b.id))

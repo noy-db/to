@@ -121,11 +121,16 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
     if (!autoMigrate) return
     if (!schemaReady) {
       schemaReady = (async () => {
+        // family#174 — the key columns compare BYTE-EXACT. Under the server
+        // default (`utf8mb4_0900_ai_ci`) `Abc` = `abc`, `café` = `cafe` and
+        // `a\x00b` = `ab`, so the upsert silently overwrote one record with the
+        // other. Applies to NEW tables only; an existing table keeps its
+        // collation until the operator runs the ALTER in the README.
         await runDDL(
           `CREATE TABLE IF NOT EXISTS ${tableName} (
-             vault VARCHAR(255) NOT NULL,
-             collection VARCHAR(255) NOT NULL,
-             id VARCHAR(255) NOT NULL,
+             vault VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+             collection VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+             id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
              v BIGINT NOT NULL,
              envelope JSON NOT NULL,
              PRIMARY KEY (vault, collection, id),
@@ -293,11 +298,17 @@ export function toMysql(options: MysqlStoreOptions): NoydbStore {
     async listPage(vault, collection, cursor, limit = 100) {
       await ensureSchema()
       const afterId = cursor ?? ''
+      // LIMIT is interpolated, not bound: MySQL 8.0.22+ refuses a numeric
+      // `LIMIT ?` through a prepared `execute()` ("Incorrect arguments to
+      // mysqld_stmt_execute"), measured on 8.4. So it is validated first.
+      if (!Number.isSafeInteger(limit) || limit < 0) {
+        throw new Error(`@noy-db/to-mysql: listPage limit must be a non-negative integer, got ${String(limit)}`)
+      }
       const [rows] = await client.execute<{ id: string; envelope: unknown }>(
         `SELECT id, envelope FROM ${tableName}
          WHERE vault = ? AND collection = ? AND id > ?
-         ORDER BY id LIMIT ?`,
-        [vault, collection, afterId, limit + 1],
+         ORDER BY id LIMIT ${limit + 1}`,
+        [vault, collection, afterId],
       )
       const hasMore = rows.length > limit
       const trimmed = hasMore ? rows.slice(0, limit) : rows
