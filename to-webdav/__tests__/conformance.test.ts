@@ -10,3 +10,8 @@ import { fakeDav } from './_fake-dav.js'
 runStoreConformanceTests('to-webdav (in-memory DAV fake)', async () =>
   toWebdav({ baseUrl: 'https://dav.example.com', fetch: fakeDav().fetch }),
 )
+
+// family#215 — the same contract over a server that folds case.
+runStoreConformanceTests('to-webdav (case-folding DAV fake)', async () =>
+  toWebdav({ baseUrl: 'https://dav.example.com', fetch: fakeDav({ foldCase: true }).fetch }),
+)

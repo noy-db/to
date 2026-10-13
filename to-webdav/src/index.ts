@@ -203,7 +203,11 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
   const PROPFIND_BODY = `<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>`
 
-  async function listChildren(vault: string, collection: string, sub: string[] = []): Promise<string[]> {
+  /**
+   * One level of a collection: each child's name (URL-decoded, still in the id
+   * codec) and whether it is itself a collection. Empty when the URL is absent.
+   */
+  async function childEntries(vault: string, collection: string, sub: string[] = []): Promise<{ name: string; dir: boolean }[]> {
     const url = collectionUrl(vault, collection) + sub.map(s => `${encodeURIComponent(s)}/`).join('')
     const res = await fetchImpl(url, {
       method: 'PROPFIND',
@@ -224,18 +228,80 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
     const hrefs = Array.from(xml.matchAll(/<(?:\w+:)?href>([^<]+)<\/(?:\w+:)?href>/g))
       .map(m => decodeURIComponent(m[1]!))
     const selfPath = new URL(url).pathname.replace(/\/+$/, '')
-    const ids: string[] = []
-    const idPrefix = sub.map(s => `${s}/`).join('')
+    const entries: { name: string; dir: boolean }[] = []
     for (const href of hrefs) {
       const hrefPath = href.replace(/\/+$/, '')
       if (hrefPath === selfPath) continue
-      const filename = hrefPath.split('/').pop()!
+      entries.push({ name: hrefPath.split('/').pop()!, dir: href.endsWith('/') })
+    }
+    return entries
+  }
+
+  async function listChildren(vault: string, collection: string, sub: string[] = []): Promise<string[]> {
+    const ids: string[] = []
+    const idPrefix = sub.map(s => `${s}/`).join('')
+    for (const { name: filename, dir } of await childEntries(vault, collection, sub)) {
       // The href is URL-decoded above; the id codec is undone second (family#174).
       if (filename.endsWith('.json')) ids.push(decodeId(idPrefix + filename.slice(0, -'.json'.length)))
       // A child collection holds the rest of a `/`-bearing id (family#133).
-      else if (href.endsWith('/')) ids.push(...await listChildren(vault, collection, [...sub, filename]))
+      else if (dir) ids.push(...await listChildren(vault, collection, [...sub, filename]))
     }
     return ids.sort()
+  }
+
+  /**
+   * Whether the server folds case (family#215), as one backed by NTFS or APFS
+   * does. Probed once, on the first write, with a sentinel pair beside the
+   * vaults: PUT `…-Aa`, GET `…-aa`. A probe ERROR is not cached as
+   * "case-sensitive": over a network a transient failure would switch the
+   * guard off for good, so the next write probes again.
+   */
+  let foldsCase: Promise<boolean> | null = null
+  function serverFoldsCase(): Promise<boolean> {
+    const probeUrl = (suffix: string): string =>
+      `${baseUrl}/${[prefix, `.noydb-case-probe-${suffix}`].filter(Boolean).map(encodeURIComponent).join('/')}`
+    foldsCase ??= (async () => {
+      if (prefix) await fetchImpl(`${baseUrl}/${encodeURIComponent(prefix)}/`, { method: 'MKCOL', headers: await requestHeaders() })
+      const put = await fetchImpl(probeUrl('Aa'), { method: 'PUT', headers: await requestHeaders(), body: '' })
+      if (!put.ok) throw new Error(`WebDAV PUT (case probe) failed: ${put.status}`)
+      try {
+        const got = await fetchImpl(probeUrl('aa'), { method: 'GET', headers: await requestHeaders() })
+        if (got.status !== 404 && !got.ok) throw new Error(`WebDAV GET (case probe) failed: ${got.status}`)
+        return got.ok
+      } finally {
+        await fetchImpl(probeUrl('Aa'), { method: 'DELETE', headers: await requestHeaders() }).catch(() => undefined)
+      }
+    })().catch((err: unknown) => {
+      foldsCase = null
+      throw err
+    })
+    return foldsCase
+  }
+
+  /**
+   * family#177 on a case-folding server: a PUT of `abc.json` overwrites the
+   * existing `Abc.json`, replacing that record while the listing keeps the
+   * other id's name. Refused, as to-file and to-nfs refuse it. Every id
+   * component is checked, since a folded collection (`_idx/Name` against
+   * `_idx/name`) lands in the other id's tree the same way.
+   */
+  async function assertNoCaseCollision(vault: string, collection: string, id: string): Promise<void> {
+    if (!(await serverFoldsCase())) return
+    const parts = idSegments(id)
+    parts[parts.length - 1] += '.json'
+    for (const [i, part] of parts.entries()) {
+      const names = (await childEntries(vault, collection, parts.slice(0, i))).map(e => e.name)
+      const clash = names.find(n => n !== part && n.toLowerCase() === part.toLowerCase())
+      if (clash !== undefined) {
+        const existing = [...parts.slice(0, i), clash].join('/').replace(/\.json$/, '')
+        throw new Error(
+          `@noy-db/to-webdav: record id ${JSON.stringify(id)} case-folds onto the existing ` +
+          `${JSON.stringify(decodeId(existing))} on a case-insensitive server, so writing it would ` +
+          'replace that record. Use ids that differ by more than case.',
+        )
+      }
+      if (!names.includes(part)) return // nothing deeper exists to collide with
+    }
   }
 
   /** Non-underscore collections in a vault (`_keyring`, `_sync` are bookkeeping). */
@@ -296,6 +362,7 @@ export function toWebdav(options: WebDAVStoreOptions): NoydbStore {
       // atomic under a concurrent writer). The contract still requires an
       // OBSERVED version mismatch to throw — reference behaviour:
       // @noy-db/to-file (found by the conformance suite, #26).
+      await assertNoCaseCollision(vault, collection, id)
       if (expectedVersion !== undefined) {
         // family#147 — an absent record is at version 0: `0` creates, `N > 0` conflicts.
         const current = (await store.get(vault, collection, id))?._v ?? 0

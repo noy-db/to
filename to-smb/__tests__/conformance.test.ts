@@ -9,3 +9,8 @@ import { mockSmb } from './_mock.js'
 runStoreConformanceTests('to-smb (in-memory SMB handle mock)', async () =>
   toSmb({ smb: mockSmb() }),
 )
+
+// family#215 — the same contract over a share that folds case.
+runStoreConformanceTests('to-smb (case-folding SMB handle mock)', async () =>
+  toSmb({ smb: mockSmb({ foldCase: true }) }),
+)

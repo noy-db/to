@@ -37,6 +37,12 @@ export interface FakeVolume {
   mounted: boolean
   /** Rewrite bytes on their way to disk; return undefined to write them as-is. */
   corruptWrite?: (path: string, data: string) => string | undefined
+  /**
+   * The volume folds case, as APFS, NTFS and most SMB shares do (family#215):
+   * a name resolves to an existing entry that matches case-insensitively, and
+   * that entry keeps its first spelling.
+   */
+  foldCase?: boolean
 }
 
 function notAllowed(): DOMException {
@@ -116,6 +122,15 @@ export class FakeDirectoryHandle {
     if (this.volume.permission !== 'granted') throw notAllowed()
   }
 
+  /** The key `name` resolves to: itself, or on a case-folding volume an existing differently-cased entry. */
+  #key(name: string): string {
+    if (!this.volume.foldCase) return name
+    for (const existing of this.node.children.keys()) {
+      if (existing.toLowerCase() === name.toLowerCase()) return existing
+    }
+    return name
+  }
+
   #child(name: string): string {
     return this.path === '' ? name : `${this.path}/${name}`
   }
@@ -130,8 +145,9 @@ export class FakeDirectoryHandle {
     return this.volume.permission
   }
 
-  async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FakeDirectoryHandle> {
+  async getDirectoryHandle(rawName: string, options?: { create?: boolean }): Promise<FakeDirectoryHandle> {
     this.#assert()
+    const name = this.#key(rawName)
     let entry = this.node.children.get(name)
     if (entry === undefined) {
       if (!options?.create) throw notFound(this.#child(name))
@@ -142,8 +158,9 @@ export class FakeDirectoryHandle {
     return new FakeDirectoryHandle(name, this.volume, entry, this.#child(name))
   }
 
-  async getFileHandle(name: string, options?: { create?: boolean }): Promise<FakeFileHandle> {
+  async getFileHandle(rawName: string, options?: { create?: boolean }): Promise<FakeFileHandle> {
     this.#assert()
+    const name = this.#key(rawName)
     let entry = this.node.children.get(name)
     if (entry === undefined) {
       if (!options?.create) throw notFound(this.#child(name))
@@ -154,8 +171,9 @@ export class FakeDirectoryHandle {
     return new FakeFileHandle(name, this.volume, entry, this.#child(name))
   }
 
-  async removeEntry(name: string, _options?: { recursive?: boolean }): Promise<void> {
+  async removeEntry(rawName: string, _options?: { recursive?: boolean }): Promise<void> {
     this.#assert()
+    const name = this.#key(rawName)
     if (!this.node.children.delete(name)) throw notFound(this.#child(name))
   }
 

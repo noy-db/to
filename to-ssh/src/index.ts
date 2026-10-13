@@ -204,6 +204,59 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
     return ids
   }
 
+  /**
+   * Whether the share folds case (family#215): most SMB shares do, and so does
+   * an SFTP server on APFS or NTFS. Probed once, on the first write, with a
+   * sentinel pair: write `…-Aa`, read back `…-aa`. A probe ERROR is not cached
+   * as "case-sensitive": over a network a transient failure would switch the
+   * guard off for good, so the next write probes again.
+   */
+  let foldsCase: Promise<boolean> | null = null
+  function shareFoldsCase(): Promise<boolean> {
+    foldsCase ??= (async () => {
+      const probe = '/' + pathJoin(root, '.noydb-case-probe-Aa')
+      await ensureDir('/' + root)
+      await sftp.writeFile(probe, '')
+      try {
+        return (await sftp.readFile('/' + pathJoin(root, '.noydb-case-probe-aa'))) !== null
+      } finally {
+        await sftp.unlink(probe).catch(() => undefined)
+      }
+    })().catch((err: unknown) => {
+      foldsCase = null
+      throw err
+    })
+    return foldsCase
+  }
+
+  /**
+   * family#177 on a case-folding share: `abc.json` opens the existing
+   * `Abc.json`, so the write would replace that record while the file keeps
+   * the other id's name. Refused, as to-file and to-nfs refuse it. Every id
+   * component is checked, since a folded directory (`_idx/Name` against
+   * `_idx/name`) lands in the other id's tree the same way.
+   */
+  async function assertNoCaseCollision(vault: string, collection: string, id: string): Promise<void> {
+    if (!(await shareFoldsCase())) return
+    const parts = encodeId(id).split('/')
+    parts[parts.length - 1] += '.json'
+    let dir = collPath(vault, collection)
+    for (const [i, part] of parts.entries()) {
+      const entries = await safeReaddir(dir)
+      const clash = entries.find(e => e !== part && e.toLowerCase() === part.toLowerCase())
+      if (clash !== undefined) {
+        const existing = [...parts.slice(0, i), clash].join('/').replace(/\.json$/, '')
+        throw new Error(
+          `@noy-db/to-ssh: record id ${JSON.stringify(id)} case-folds onto the existing ` +
+          `${JSON.stringify(decodeId(existing))} on a case-insensitive share, so writing it would ` +
+          'replace that record. Use ids that differ by more than case.',
+        )
+      }
+      if (!entries.includes(part)) return // nothing deeper exists to collide with
+      dir = '/' + pathJoin(dir, part)
+    }
+  }
+
   const store: NoydbStore = {
     name,
     capabilities: {
@@ -225,6 +278,7 @@ export function toSsh(options: SshStoreOptions): NoydbStore {
       // requires an OBSERVED version mismatch to throw. Reference
       // behaviour: @noy-db/to-file (found by the conformance suite, #26).
       const target = recordPath(vault, collection, id)
+      await assertNoCaseCollision(vault, collection, id)
       if (expectedVersion !== undefined) {
         // family#147 — an absent record is at version 0: `0` creates, `N > 0` conflicts.
         // Read through the legacy fallback (family#174), or a pre-encoding record reads as absent.

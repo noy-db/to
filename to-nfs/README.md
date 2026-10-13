@@ -50,6 +50,14 @@ Both halves of the identity are required — a half-stated claim is not
 checkable, and omitting them entirely skips the check, so existing consumers
 are unaffected.
 
+## Ids that differ only by case
+
+An APFS or NTFS mount folds case; Linux filesystems usually do not, so `abc.json` would open an existing `Abc.json` and replace that record. The store
+probes the mount once, on its first write, and on a case-folding mount refuses a `put` or
+`saveAll` whose id differs from an existing one only by case, in any `/`-separated component.
+Each write on such a mount then costs one directory listing per id component. On a
+case-sensitive mount nothing changes.
+
 ## Status
 
 **Pre-release.** API may change before `1.0`.
