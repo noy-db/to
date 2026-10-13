@@ -16,6 +16,8 @@ interface Row {
   by?: string | null; tier?: number | null; elevated_by?: string | null; det?: string | null; del?: number | null
 }
 
+const hexOf = (s: string) => Buffer.from(s, 'utf8').toString('hex').toUpperCase()
+
 function mockDb(): SqliteDatabase & { rows: Map<string, Row> } {
   const rows = new Map<string, Row>()
   const key = (v: string, c: string, i: string) => `${v}\x00${c}\x00${i}`
@@ -59,24 +61,24 @@ function mockDb(): SqliteDatabase & { rows: Map<string, Row> } {
         throw new Error(`mockDb.get: unsupported SQL: ${normalized}`)
       },
       all(...params: readonly unknown[]) {
-        if (/^SELECT id FROM/i.test(normalized)) {
+        if (/^SELECT hex\(id\) AS id_hex FROM/i.test(normalized)) {
           const [vault, collection] = params as [string, string]
           return [...rows.values()]
             .filter(r => r.vault === vault && r.collection === collection)
             .sort((a, b) => a.id.localeCompare(b.id))
-            .map(r => ({ id: r.id }))
+            .map(r => ({ id_hex: hexOf(r.id) }))
         }
-        if (/^SELECT \* FROM .* WHERE vault = \? AND collection = \? ORDER BY id LIMIT \? OFFSET \?/i.test(normalized) ||
-            /^SELECT id, v, ts, env, iv, data, by, tier, elevated_by, det FROM/i.test(normalized)) {
+        if (/^SELECT hex\(id\) AS id_hex, v, ts, env, iv, data, by, tier, elevated_by, det FROM/i.test(normalized)) {
           const [vault, collection, limit, offset] = params as [string, string, number, number]
           return [...rows.values()]
             .filter(r => r.vault === vault && r.collection === collection)
             .sort((a, b) => a.id.localeCompare(b.id))
             .slice(offset, offset + limit)
+            .map(r => ({ ...r, id_hex: hexOf(r.id) }))
         }
-        if (/^SELECT \* FROM .* WHERE vault = \?/i.test(normalized)) {
+        if (/^SELECT \*, hex\(id\) AS id_hex FROM .* WHERE vault = \?/i.test(normalized)) {
           const [vault] = params as [string]
-          return [...rows.values()].filter(r => r.vault === vault)
+          return [...rows.values()].filter(r => r.vault === vault).map(r => ({ ...r, id_hex: hexOf(r.id) }))
         }
         throw new Error(`mockDb.all: unsupported SQL: ${normalized}`)
       },

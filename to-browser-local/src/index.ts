@@ -223,12 +223,11 @@ function createLocalStorageAdapter(prefix: string, obfuscate: boolean, obfKey: s
       const k = key(vault, collection, id)
 
       if (expectedVersion !== undefined) {
+        // family#147 — an absent record is at version 0: `0` creates, `N > 0` conflicts.
         const existing = localStorage.getItem(k)
-        if (existing) {
-          const current = unwrapValue(existing, obfuscate, obfKey).envelope
-          if (current._v !== expectedVersion) {
-            throw new ConflictError(current._v, `Version conflict: expected ${expectedVersion}, found ${current._v}`)
-          }
+        const current = existing ? unwrapValue(existing, obfuscate, obfKey).envelope._v : 0
+        if (current !== expectedVersion) {
+          throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
         }
       }
 
@@ -296,12 +295,20 @@ function createLocalStorageAdapter(prefix: string, obfuscate: boolean, obfKey: s
     },
 
     async saveAll(vault, data) {
+      // family#147 — saveAll REPLACES. WRITE FIRST, PRUNE SECOND: a setItem that
+      // hits the quota mid-call leaves stale extra records rather than a hole.
+      // loadAll skips underscore collections, so they are never pruned.
       for (const [collection, records] of Object.entries(data)) {
         for (const [id, envelope] of Object.entries(records)) {
           localStorage.setItem(
             key(vault, collection, id),
             wrapValue(envelope, collection, id, obfuscate, obfKey),
           )
+        }
+      }
+      for (const [collection, records] of Object.entries(await this.loadAll(vault))) {
+        for (const id of Object.keys(records)) {
+          if (!Object.hasOwn(data[collection] ?? {}, id)) localStorage.removeItem(key(vault, collection, id))
         }
       }
     },

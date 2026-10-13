@@ -90,6 +90,18 @@ function assertTableName(tableName: string): void {
   }
 }
 
+/**
+ * family#174 — ids are read back as `hex(id)`, never as the TEXT column:
+ * node:sqlite returns TEXT as a C string, so an id holding a NUL (hub's
+ * partitioned sequence and period keys) came back cut at the byte, while the
+ * stored key was intact. The hex form is the stored bytes whatever the driver.
+ */
+function idFromHex(hex: string): string {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < bytes.length; i++) bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  return new TextDecoder().decode(bytes)
+}
+
 export function toTurso(options: TursoStoreOptions): NoydbStore {
   const { client: staticClient, tableName = 'noydb_envelopes', autoMigrate = true } = options
   assertTableName(tableName)
@@ -321,17 +333,17 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
       await ensureSchema()
       const client = await getClient()
       const result = await client.execute({
-        sql: `SELECT id FROM ${tableName} WHERE vault = ? AND collection = ? ORDER BY id`,
+        sql: `SELECT hex(id) AS id_hex FROM ${tableName} WHERE vault = ? AND collection = ? ORDER BY id`,
         args: [vault, collection],
       })
-      return result.rows.map(r => r.id as string)
+      return result.rows.map(r => idFromHex(r.id_hex as string))
     },
 
     async loadAll(vault) {
       await ensureSchema()
       const client = await getClient()
       const result = await client.execute({
-        sql: `SELECT * FROM ${tableName} WHERE vault = ?`,
+        sql: `SELECT *, hex(id) AS id_hex FROM ${tableName} WHERE vault = ?`,
         args: [vault],
       })
       const snap: VaultSnapshot = {}
@@ -342,7 +354,7 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
         // contract, with `@noy-db/to-file` setting the reference behaviour via
         // the same `_`-prefix rule.
         if (collection.startsWith('_')) continue
-        const id = row.id as string
+        const id = idFromHex(row.id_hex as string)
         const bucket = snap[collection] ?? (snap[collection] = {})
         bucket[id] = rowToEnvelope(row)
       }
@@ -353,8 +365,10 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
       await ensureSchema()
       const client = await getClient()
       if (client.batch) {
+        // family#147 — saveAll REPLACES every non-underscore collection; an underscore
+        // one (`_keyring`) is never pruned, only overwritten when the snapshot carries it.
         const statements: { sql: string; args?: readonly unknown[] }[] = [
-          { sql: `DELETE FROM ${tableName} WHERE vault = ?`, args: [vault] },
+          { sql: `DELETE FROM ${tableName} WHERE vault = ? AND substr(collection, 1, 1) <> '_'`, args: [vault] },
         ]
         for (const [collection, recs] of Object.entries(data)) {
           for (const [id, envelope] of Object.entries(recs)) {
@@ -371,11 +385,24 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
         await client.batch(statements)
         return
       }
-      // Fallback: sequential execute when the client lacks batch.
-      await client.execute({ sql: `DELETE FROM ${tableName} WHERE vault = ?`, args: [vault] })
+      // Fallback: sequential execute when the client lacks batch — no
+      // transaction, so WRITE FIRST, PRUNE SECOND: a torn call leaves stale
+      // extra records (re-run the restore) rather than a hole. loadAll skips
+      // underscore collections, so they are never pruned.
+      const before = await store.loadAll(vault)
       for (const [collection, recs] of Object.entries(data)) {
         for (const [id, envelope] of Object.entries(recs)) {
           await upsert(vault, collection, id, envelope)
+        }
+      }
+      for (const [collection, recs] of Object.entries(before)) {
+        for (const id of Object.keys(recs)) {
+          if (data[collection]?.[id] === undefined) {
+            await client.execute({
+              sql: `DELETE FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
+              args: [vault, collection, id],
+            })
+          }
         }
       }
     },
@@ -395,17 +422,17 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
       const client = await getClient()
       const afterId = cursor ?? ''
       const result = await client.execute({
-        sql: `SELECT id, v, ts, env, iv, data, by, tier, elevated_by, det FROM ${tableName}
+        sql: `SELECT hex(id) AS id_hex, v, ts, env, iv, data, by, tier, elevated_by, det FROM ${tableName}
               WHERE vault = ? AND collection = ? AND id > ?
               ORDER BY id LIMIT ?`,
         args: [vault, collection, afterId, limit + 1],
       })
       const hasMore = result.rows.length > limit
       const trimmed = hasMore ? result.rows.slice(0, limit) : result.rows
-      const items = trimmed.map(r => ({ id: r.id as string, envelope: rowToEnvelope(r) }))
+      const items = trimmed.map(r => ({ id: idFromHex(r.id_hex as string), envelope: rowToEnvelope(r) }))
       const res: ListPageResult = {
         items,
-        nextCursor: hasMore ? (trimmed[trimmed.length - 1]!.id as string) : null,
+        nextCursor: hasMore ? items[items.length - 1]!.id : null,
       }
       return res
     },

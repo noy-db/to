@@ -1,5 +1,18 @@
 # @noy-db/to-mysql
 
+## Unreleased
+
+- **New tables compare ids byte-exact** (noy-db/family#174). `vault`, `collection` and `id` are
+  created `COLLATE utf8mb4_bin`. Under the server default `utf8mb4_0900_ai_ci`, ids that differed
+  only in case (`Abc`/`abc`), accent (`café`/`cafe`) or an ignorable character such as NUL
+  (`a\x00b`/`ab`) were the same key, and the upsert silently overwrote one record with the other.
+  An existing table is **not** migrated: the README gives the exact `ALTER`. It also explains why
+  no SQL query can find records that were already overwritten, and how the vault's owner can find
+  them (noy-db/family#177).
+- **`listPage` works on MySQL 8.0.22+.** `LIMIT` is now a validated integer in the SQL text.
+  A numeric `LIMIT ?` through a prepared `execute()` was refused with "Incorrect arguments to
+  mysqld_stmt_execute".
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

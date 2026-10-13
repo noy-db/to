@@ -94,6 +94,18 @@ function assertTableName(tableName: string): void {
   }
 }
 
+/**
+ * family#174 — ids are read back as `hex(id)`, never as the TEXT column:
+ * node:sqlite returns TEXT as a C string, so an id holding a NUL (hub's
+ * partitioned sequence and period keys) came back cut at the byte, while the
+ * stored key was intact. The hex form is the stored bytes whatever the driver.
+ */
+function idFromHex(hex: string): string {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < bytes.length; i++) bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  return new TextDecoder().decode(bytes)
+}
+
 export function toSqlite(options: SqliteStoreOptions): NoydbStore {
   const { db, tableName = 'noydb_envelopes', autoMigrate = true } = options
   assertTableName(tableName)
@@ -178,8 +190,10 @@ export function toSqlite(options: SqliteStoreOptions): NoydbStore {
       const existing = db
         .prepare(`SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`)
         .get(vault, collection, id) as { v: number } | undefined
-      if (existing && existing.v !== expectedVersion) {
-        throw new ConflictError(existing.v, `Version conflict: expected ${expectedVersion}, found ${existing.v}`)
+      // family#147 — an absent id is at version 0: `0` creates, `N > 0` conflicts.
+      const current = existing?.v ?? 0
+      if (current !== expectedVersion) {
+        throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
       }
     }
 
@@ -226,15 +240,15 @@ export function toSqlite(options: SqliteStoreOptions): NoydbStore {
 
     async list(vault, collection) {
       const rows = db
-        .prepare(`SELECT id FROM ${tableName} WHERE vault = ? AND collection = ? ORDER BY id`)
-        .all(vault, collection) as Array<{ id: string }>
-      return rows.map(r => r.id)
+        .prepare(`SELECT hex(id) AS id_hex FROM ${tableName} WHERE vault = ? AND collection = ? ORDER BY id`)
+        .all(vault, collection) as Array<{ id_hex: string }>
+      return rows.map(r => idFromHex(r.id_hex))
     },
 
     async loadAll(vault) {
       const rows = db
-        .prepare(`SELECT * FROM ${tableName} WHERE vault = ?`)
-        .all(vault) as Row[]
+        .prepare(`SELECT *, hex(id) AS id_hex FROM ${tableName} WHERE vault = ?`)
+        .all(vault) as Array<Row & { id_hex: string }>
       const snap: VaultSnapshot = {}
       for (const row of rows) {
         // Internal collections (`_keyring`, `_sync`) are the vault's own
@@ -243,7 +257,7 @@ export function toSqlite(options: SqliteStoreOptions): NoydbStore {
         // the same `_`-prefix rule.
         if (row.collection.startsWith('_')) continue
         const bucket = snap[row.collection] ?? (snap[row.collection] = {})
-        bucket[row.id] = rowToEnvelope(row)
+        bucket[idFromHex(row.id_hex)] = rowToEnvelope(row)
       }
       return snap
     },
@@ -251,7 +265,9 @@ export function toSqlite(options: SqliteStoreOptions): NoydbStore {
     async saveAll(vault, data) {
       db.exec('BEGIN IMMEDIATE')
       try {
-        db.prepare(`DELETE FROM ${tableName} WHERE vault = ?`).run(vault)
+        // family#147 — saveAll REPLACES every non-underscore collection; an underscore
+        // one (`_keyring`) is never pruned, only overwritten when the snapshot carries it.
+        db.prepare(`DELETE FROM ${tableName} WHERE vault = ? AND substr(collection, 1, 1) <> '_'`).run(vault)
         for (const [collection, recs] of Object.entries(data)) {
           for (const [id, envelope] of Object.entries(recs)) {
             upsert(vault, collection, id, envelope)
@@ -279,14 +295,14 @@ export function toSqlite(options: SqliteStoreOptions): NoydbStore {
 
       const rows = db
         .prepare(
-          `SELECT id, v, ts, env, iv, data, by, tier, elevated_by, det FROM ${tableName}
+          `SELECT hex(id) AS id_hex, v, ts, env, iv, data, by, tier, elevated_by, det FROM ${tableName}
            WHERE vault = ? AND collection = ?
            ORDER BY id LIMIT ? OFFSET ?`,
         )
-        .all(vault, collection, limit, offset) as Array<Row & { id: string }>
+        .all(vault, collection, limit, offset) as Array<Row & { id_hex: string }>
 
       const items = rows.map(r => ({
-        id: r.id,
+        id: idFromHex(r.id_hex),
         envelope: rowToEnvelope({ ...r, vault, collection }),
       }))
       const result: ListPageResult = {
@@ -308,9 +324,8 @@ export function toSqlite(options: SqliteStoreOptions): NoydbStore {
               const existing = db
                 .prepare(`SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`)
                 .get(op.vault, op.collection, op.id) as { v: number } | undefined
-              if (existing && existing.v !== op.expectedVersion) {
-                throw new ConflictError(existing.v)
-              }
+              const current = existing?.v ?? 0
+              if (current !== op.expectedVersion) throw new ConflictError(current)
             }
             db.prepare(`DELETE FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`)
               .run(op.vault, op.collection, op.id)

@@ -45,10 +45,30 @@ function assertName(value: string, what: string): void {
 }
 
 function assertId(id: string): void {
-  if (/[\\\0]/.test(id) || id.split('/').some(p => p === '' || p === '.' || p === '..')) {
-    throw new Error(`@noy-db/to-nfs: record id must not contain a backslash, NUL, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
+  // A NUL is no longer refused (family#174): hub joins partitioned sequence and
+  // period keys with `\x00`, so it is ENCODED instead (see `encodeIdComponent`).
+  if (id.includes('\\') || id.split('/').some(p => p === '' || p === '.' || p === '..')) {
+    throw new Error(`@noy-db/to-nfs: record id must not contain a backslash, or an empty, "." or ".." component, got ${JSON.stringify(id)}`)
   }
 }
+
+/**
+ * Reversible per-component id encoding (family#174), the same codec as
+ * to-file's. `%` is escaped FIRST or `a%00b` and `a\x00b` share one file; the
+ * scope is deliberately `%` and NUL only. Applied per `/` component, since `/`
+ * maps to a directory.
+ */
+function encodeIdComponent(part: string): string {
+  return part.replace(/%/g, '%25').replace(/\0/g, '%00')
+}
+
+/** Exact inverse of {@link encodeIdComponent}, in ONE pass (`%2500` → `%00`). */
+function decodeIdComponent(part: string): string {
+  return part.replace(/%(25|00)/g, (_m, code: string) => (code === '25' ? '%' : '\0'))
+}
+
+const encodeId = (id: string): string => id.split('/').map(encodeIdComponent).join('/')
+const decodeId = (id: string): string => id.split('/').map(decodeIdComponent).join('/')
 
 export function jsonFile(options: JsonFileOptions): NoydbStore {
   const { dir, pretty = true } = options
@@ -65,6 +85,18 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
 
   function recordPath(vault: string, collection: string, id: string): string {
     assertId(id)
+    return join(collectionDir(vault, collection), `${encodeId(id)}.json`)
+  }
+
+  /**
+   * The pre-family#174 path: encoding `%` moved every existing id containing
+   * one, so reads and deletes also try the raw name. ⛔ Null whenever the raw
+   * name is ANOTHER id's encoded name (`a%00b` is where `a\x00b` lives), or a
+   * fallback would read or delete that record. Null too when nothing moved,
+   * and for an id holding a NUL, which no pre-encoding record could carry.
+   */
+  function legacyRecordPath(vault: string, collection: string, id: string): string | null {
+    if (id.includes('\0') || !id.includes('%') || encodeId(decodeId(id)) === id) return null
     return join(collectionDir(vault, collection), `${id}.json`)
   }
 
@@ -72,13 +104,46 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     await mkdir(path, { recursive: true })
   }
 
-  async function fileExists(path: string): Promise<boolean> {
+  /**
+   * Record ids under a collection directory, descending into subdirectories:
+   * an id may carry `/` (hub's `_idx/<field>/<id>`, family#133), stored as
+   * nested directories. A missing directory has no ids.
+   */
+  async function listIds(path: string, prefix = ''): Promise<string[]> {
+    let entries
     try {
-      await stat(path)
-      return true
+      entries = await readdir(path, { withFileTypes: true })
     } catch {
-      return false
+      return []
     }
+    const ids: string[] = []
+    for (const e of entries) {
+      if (e.isDirectory()) ids.push(...await listIds(join(path, e.name), `${prefix}${e.name}/`))
+      else if (e.name.endsWith('.json')) ids.push(decodeId(prefix + e.name.slice(0, -'.json'.length)))
+    }
+    return ids
+  }
+
+  /** Encoded path first, then the legacy raw one (family#174); null when neither exists. */
+  async function readRecord(vault: string, collection: string, id: string): Promise<EncryptedEnvelope | null> {
+    for (const path of [recordPath(vault, collection, id), legacyRecordPath(vault, collection, id)]) {
+      if (path === null) continue
+      try {
+        return JSON.parse(await readFile(path, 'utf-8')) as EncryptedEnvelope
+      } catch {
+        // not at this path — try the next
+      }
+    }
+    return null
+  }
+
+  /**
+   * Drops a pre-family#174 copy once the encoded one is written, so an id never
+   * lists twice and the stale copy cannot resurface.
+   */
+  async function removeLegacy(vault: string, collection: string, id: string): Promise<void> {
+    const legacy = legacyRecordPath(vault, collection, id)
+    if (legacy !== null) await unlink(legacy).catch(() => undefined)
   }
 
   function serialize(envelope: EncryptedEnvelope): string {
@@ -100,32 +165,30 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     },
 
     async get(vault, collection, id) {
-      const path = recordPath(vault, collection, id)
-      try {
-        const content = await readFile(path, 'utf-8')
-        return JSON.parse(content) as EncryptedEnvelope
-      } catch {
-        return null
-      }
+      return readRecord(vault, collection, id)
     },
 
     async put(vault, collection, id, envelope, expectedVersion) {
       const path = recordPath(vault, collection, id)
 
-      if (expectedVersion !== undefined && await fileExists(path)) {
-        const existing = JSON.parse(await readFile(path, 'utf-8')) as EncryptedEnvelope
-        if (existing._v !== expectedVersion) {
-          throw new ConflictError(existing._v, `Version conflict: expected ${expectedVersion}, found ${existing._v}`)
+      if (expectedVersion !== undefined) {
+        // family#147 — an absent record is at version 0: `0` creates, `N > 0` conflicts.
+        // Read through the legacy fallback (family#174), or a pre-encoding record reads as absent.
+        const current = (await readRecord(vault, collection, id))?._v ?? 0
+        if (current !== expectedVersion) {
+          throw new ConflictError(current, `Version conflict: expected ${expectedVersion}, found ${current}`)
         }
       }
 
       // The record's own parent, not the collection: an id may carry `/` (family#133).
       await ensureDir(dirname(path))
       await writeFile(path, serialize(envelope), 'utf-8')
+      await removeLegacy(vault, collection, id)
     },
 
     async delete(vault, collection, id) {
       const path = recordPath(vault, collection, id)
+      await removeLegacy(vault, collection, id)
       try {
         await unlink(path)
       } catch {
@@ -134,15 +197,7 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     },
 
     async list(vault, collection) {
-      const dirPath = collectionDir(vault, collection)
-      try {
-        const entries = await readdir(dirPath)
-        return entries
-          .filter(f => f.endsWith('.json'))
-          .map(f => f.slice(0, -5)) // remove .json extension
-      } catch {
-        return []
-      }
+      return listIds(collectionDir(vault, collection))
     },
 
     async loadAll(vault) {
@@ -158,12 +213,9 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
           if (!collStat.isDirectory()) continue
 
           const records: Record<string, EncryptedEnvelope> = {}
-          const files = await readdir(collPath)
-          for (const file of files) {
-            if (!file.endsWith('.json')) continue
-            const id = file.slice(0, -5)
-            const content = await readFile(join(collPath, file), 'utf-8')
-            records[id] = JSON.parse(content) as EncryptedEnvelope
+          for (const id of await listIds(collPath)) {
+            const envelope = await readRecord(vault, collName, id)
+            if (envelope) records[id] = envelope
           }
           snapshot[collName] = records
         }
@@ -175,12 +227,34 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     },
 
     async saveAll(vault, data) {
+      // family#147 — saveAll REPLACES. No transaction on a filesystem, so WRITE
+      // FIRST, PRUNE SECOND: a torn call leaves stale extra records (re-run the
+      // restore) instead of a hole. Underscore collections are never pruned.
       for (const [collName, records] of Object.entries(data)) {
         await ensureDir(collectionDir(vault, collName))
         for (const [id, envelope] of Object.entries(records)) {
           const path = recordPath(vault, collName, id)
           await ensureDir(dirname(path))
           await writeFile(path, serialize(envelope), 'utf-8')
+          await removeLegacy(vault, collName, id)
+        }
+      }
+      let collections: string[]
+      try {
+        collections = await readdir(vaultDir(vault))
+      } catch {
+        return // no vault directory: an empty snapshot into a vault that never existed
+      }
+      for (const collName of collections) {
+        if (collName.startsWith('_')) continue
+        const keep = data[collName] ?? {}
+        for (const id of await listIds(collectionDir(vault, collName))) {
+          if (Object.hasOwn(keep, id)) continue
+          await unlink(recordPath(vault, collName, id)).catch(async (err: unknown) => {
+            const legacy = legacyRecordPath(vault, collName, id)
+            if (legacy === null) throw err
+            await unlink(legacy)
+          })
         }
       }
     },

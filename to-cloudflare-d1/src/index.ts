@@ -78,6 +78,18 @@ function assertTableName(tableName: string): void {
   }
 }
 
+/**
+ * family#174 — ids are read back as `hex(id)`, never as the TEXT column:
+ * node:sqlite returns TEXT as a C string, so an id holding a NUL (hub's
+ * partitioned sequence and period keys) came back cut at the byte, while the
+ * stored key was intact. The hex form is the stored bytes whatever the driver.
+ */
+function idFromHex(hex: string): string {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < bytes.length; i++) bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  return new TextDecoder().decode(bytes)
+}
+
 export function toCloudflareD1(options: D1StoreOptions): NoydbStore {
   const { db, tableName = 'noydb_envelopes', autoMigrate = true } = options
   assertTableName(tableName)
@@ -254,16 +266,16 @@ export function toCloudflareD1(options: D1StoreOptions): NoydbStore {
     async list(vault, collection) {
       await ensureSchema()
       const res = await db
-        .prepare(`SELECT id FROM ${tableName} WHERE vault = ? AND collection = ? ORDER BY id`)
+        .prepare(`SELECT hex(id) AS id_hex FROM ${tableName} WHERE vault = ? AND collection = ? ORDER BY id`)
         .bind(vault, collection)
-        .all<{ id: string }>()
-      return (res.results ?? []).map(r => r.id)
+        .all<{ id_hex: string }>()
+      return (res.results ?? []).map(r => idFromHex(r.id_hex))
     },
 
     async loadAll(vault) {
       await ensureSchema()
       const res = await db
-        .prepare(`SELECT * FROM ${tableName} WHERE vault = ?`)
+        .prepare(`SELECT *, hex(id) AS id_hex FROM ${tableName} WHERE vault = ?`)
         .bind(vault)
         .all<Record<string, unknown>>()
       const snap: VaultSnapshot = {}
@@ -274,7 +286,7 @@ export function toCloudflareD1(options: D1StoreOptions): NoydbStore {
         // contract, with `@noy-db/to-file` setting the reference behaviour via
         // the same `_`-prefix rule.
         if (collection.startsWith('_')) continue
-        const id = row.id as string
+        const id = idFromHex(row.id_hex as string)
         const bucket = snap[collection] ?? (snap[collection] = {})
         bucket[id] = rowToEnvelope(row)
       }
@@ -283,8 +295,10 @@ export function toCloudflareD1(options: D1StoreOptions): NoydbStore {
 
     async saveAll(vault, data) {
       await ensureSchema()
+      // family#147 — saveAll REPLACES every non-underscore collection; an underscore
+      // one (`_keyring`) is never pruned, only overwritten when the snapshot carries it.
       const statements: D1PreparedStatement[] = [
-        db.prepare(`DELETE FROM ${tableName} WHERE vault = ?`).bind(vault),
+        db.prepare(`DELETE FROM ${tableName} WHERE vault = ? AND substr(collection, 1, 1) <> '_'`).bind(vault),
       ]
       for (const [collection, recs] of Object.entries(data)) {
         for (const [id, envelope] of Object.entries(recs)) {
@@ -308,7 +322,7 @@ export function toCloudflareD1(options: D1StoreOptions): NoydbStore {
       const afterId = cursor ?? ''
       const res = await db
         .prepare(
-          `SELECT id, v, ts, env, iv, data, by, tier, elevated_by, det FROM ${tableName}
+          `SELECT hex(id) AS id_hex, v, ts, env, iv, data, by, tier, elevated_by, det FROM ${tableName}
            WHERE vault = ? AND collection = ? AND id > ?
            ORDER BY id LIMIT ?`,
         )
@@ -317,10 +331,10 @@ export function toCloudflareD1(options: D1StoreOptions): NoydbStore {
       const rows = res.results ?? []
       const hasMore = rows.length > limit
       const trimmed = hasMore ? rows.slice(0, limit) : rows
-      const items = trimmed.map(r => ({ id: r.id as string, envelope: rowToEnvelope(r) }))
+      const items = trimmed.map(r => ({ id: idFromHex(r.id_hex as string), envelope: rowToEnvelope(r) }))
       const out: ListPageResult = {
         items,
-        nextCursor: hasMore ? (trimmed[trimmed.length - 1]!.id as string) : null,
+        nextCursor: hasMore ? items[items.length - 1]!.id : null,
       }
       return out
     },
