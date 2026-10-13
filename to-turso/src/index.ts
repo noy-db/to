@@ -60,7 +60,9 @@ export interface TursoStoreOptions {
   /**
    * Client builder for the rolling-credentials path — typically
    * `authToken => createClient({ url, authToken })`. Required together
-   * with `credentials` when no `client` is supplied.
+   * with `credentials` when no `client` is supplied. The client must
+   * expose `batch()`, as `@libsql/client`'s always does: this path declares
+   * `txAtomic` before any client exists, and `tx()` refuses one without it.
    */
   readonly clientFactory?: (authToken: string) => LibsqlClient
   /**
@@ -281,6 +283,8 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
     })
   }
 
+  const txAtomic = staticClient ? typeof staticClient.batch === 'function' : true
+
   const store: NoydbStore = {
     name: 'turso',
     capabilities: {
@@ -289,10 +293,10 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
       // (all-or-nothing), so the atomic-batch capability is honest exactly
       // when the client exposes `batch`. Factory-built clients are real
       // `@libsql/client` instances, which always do; an injected duck-typed
-      // client without `batch` falls back to sequential (non-atomic) tx and
-      // must not advertise the bit (#22). The batch path enforces per-op
-      // `expectedVersion` via in-batch guard statements (#37).
-      txAtomic: staticClient ? typeof staticClient.batch === 'function' : true,
+      // client without `batch` has no atomic tx, so it neither advertises the
+      // bit nor implements `tx()` (#22, family#170). The batch path enforces
+      // per-op `expectedVersion` via in-batch guard statements (#37).
+      txAtomic,
       serverWriteTime: true,
       auth: { kind: 'api-key', required: true, flow: 'static' },
     },
@@ -440,88 +444,85 @@ export function toTurso(options: TursoStoreOptions): NoydbStore {
     async tx(ops: readonly TxOp[]) {
       await ensureSchema()
       const client = await getClient()
-      if (client.batch) {
-        // Guards run FIRST, inside the same atomic batch as the writes: a
-        // conditional UPDATE that matches zero rows cannot abort a libSQL
-        // batch, so each expectedVersion becomes a statement that RAISES
-        // (NOT NULL violation on `v`) exactly when its precondition fails
-        // against the pre-batch state — aborting and rolling back the
-        // entire implicit transaction (#37).
-        //   expectedVersion 0  → row must NOT exist (create-only)
-        //   expectedVersion N  → row must exist at exactly v = N
-        const guarded = ops.filter(op => op.expectedVersion !== undefined)
-        const statements: { sql: string; args?: readonly unknown[] }[] = []
-        for (const op of guarded) {
-          const clause = op.expectedVersion === 0
-            ? `EXISTS (SELECT 1 FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?)`
-            : `NOT EXISTS (SELECT 1 FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ? AND v = ?)`
-          const args = op.expectedVersion === 0
-            ? [op.vault, op.collection, op.id]
-            : [op.vault, op.collection, op.id, op.expectedVersion]
-          statements.push({
-            sql:
-              `INSERT INTO ${tableName} (vault, collection, id, v, ts, iv, data)
-               SELECT '', '', '', NULL, '', '', '' WHERE ${clause}`,
-            args,
-          })
-        }
-        for (const op of ops) {
-          if (op.type === 'put') {
-            if (!op.envelope) throw new Error(`tx put op missing envelope for ${op.id}`)
-            statements.push({
-              sql:
-                `INSERT INTO ${tableName} (vault, collection, id, v, ts, env, iv, data)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                 ON CONFLICT(vault, collection, id) DO UPDATE SET
-                   v = excluded.v, ts = excluded.ts, env = excluded.env, iv = excluded.iv, data = excluded.data`,
-              args: [
-                op.vault, op.collection, op.id, op.envelope._v, op.envelope._ts, JSON.stringify(op.envelope),
-                op.envelope._iv, op.envelope._data,
-              ],
-            })
-          } else {
-            statements.push({
-              sql: `DELETE FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
-              args: [op.vault, op.collection, op.id],
-            })
-          }
-        }
-        try {
-          await client.batch(statements)
-        } catch (err) {
-          // The batch rolled back. Re-probe each guarded op against the
-          // (restored) pre-batch state; a mismatch identifies the tripped
-          // guard → ConflictError. No mismatch found (e.g. an unrelated
-          // SQL error) → rethrow the original.
-          for (const op of guarded) {
-            const check = await client.execute({
-              sql: `SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
-              args: [op.vault, op.collection, op.id],
-            })
-            const row = check.rows[0] as { v: number } | undefined
-            const conflicted = op.expectedVersion === 0 ? row !== undefined : row?.v !== op.expectedVersion
-            if (conflicted) {
-              throw new ConflictError(
-                row?.v ?? 0,
-                `tx version conflict on ${op.collection}/${op.id}: expected ${op.expectedVersion}, found ${row?.v ?? 'no row'}`,
-              )
-            }
-          }
-          throw err
-        }
-        return
+      if (!client.batch) {
+        // Only reachable through a factory client without batch(): refuse before
+        // writing anything rather than run the ops non-atomically (family#170).
+        throw new Error('@noy-db/to-turso: tx() needs a client with batch(); clientFactory must return one.')
       }
-      // Fallback: no batch API — sequential execute (no atomic guarantee).
+      // Guards run FIRST, inside the same atomic batch as the writes: a
+      // conditional UPDATE that matches zero rows cannot abort a libSQL
+      // batch, so each expectedVersion becomes a statement that RAISES
+      // (NOT NULL violation on `v`) exactly when its precondition fails
+      // against the pre-batch state — aborting and rolling back the
+      // entire implicit transaction (#37).
+      //   expectedVersion 0  → row must NOT exist (create-only)
+      //   expectedVersion N  → row must exist at exactly v = N
+      const guarded = ops.filter(op => op.expectedVersion !== undefined)
+      const statements: { sql: string; args?: readonly unknown[] }[] = []
+      for (const op of guarded) {
+        const clause = op.expectedVersion === 0
+          ? `EXISTS (SELECT 1 FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?)`
+          : `NOT EXISTS (SELECT 1 FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ? AND v = ?)`
+        const args = op.expectedVersion === 0
+          ? [op.vault, op.collection, op.id]
+          : [op.vault, op.collection, op.id, op.expectedVersion]
+        statements.push({
+          sql:
+            `INSERT INTO ${tableName} (vault, collection, id, v, ts, iv, data)
+             SELECT '', '', '', NULL, '', '', '' WHERE ${clause}`,
+          args,
+        })
+      }
       for (const op of ops) {
         if (op.type === 'put') {
           if (!op.envelope) throw new Error(`tx put op missing envelope for ${op.id}`)
-          await upsert(op.vault, op.collection, op.id, op.envelope, op.expectedVersion)
+          statements.push({
+            sql:
+              `INSERT INTO ${tableName} (vault, collection, id, v, ts, env, iv, data)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(vault, collection, id) DO UPDATE SET
+                 v = excluded.v, ts = excluded.ts, env = excluded.env, iv = excluded.iv, data = excluded.data`,
+            args: [
+              op.vault, op.collection, op.id, op.envelope._v, op.envelope._ts, JSON.stringify(op.envelope),
+              op.envelope._iv, op.envelope._data,
+            ],
+          })
         } else {
-          await store.delete(op.vault, op.collection, op.id)
+          statements.push({
+            sql: `DELETE FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
+            args: [op.vault, op.collection, op.id],
+          })
         }
+      }
+      try {
+        await client.batch(statements)
+      } catch (err) {
+        // The batch rolled back. Re-probe each guarded op against the
+        // (restored) pre-batch state; a mismatch identifies the tripped
+        // guard → ConflictError. No mismatch found (e.g. an unrelated
+        // SQL error) → rethrow the original.
+        for (const op of guarded) {
+          const check = await client.execute({
+            sql: `SELECT v FROM ${tableName} WHERE vault = ? AND collection = ? AND id = ?`,
+            args: [op.vault, op.collection, op.id],
+          })
+          const row = check.rows[0] as { v: number } | undefined
+          const conflicted = op.expectedVersion === 0 ? row !== undefined : row?.v !== op.expectedVersion
+          if (conflicted) {
+            throw new ConflictError(
+              row?.v ?? 0,
+              `tx version conflict on ${op.collection}/${op.id}: expected ${op.expectedVersion}, found ${row?.v ?? 'no row'}`,
+            )
+          }
+        }
+        throw err
       }
     },
   }
+
+  // A tx() that cannot be atomic is not offered at all: the kit requires
+  // `tx` iff `txAtomic`, and hub falls back to its own path (family#170).
+  if (!txAtomic) delete store.tx
 
   return store
 }

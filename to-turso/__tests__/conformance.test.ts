@@ -19,6 +19,13 @@ runStoreConformanceTests('to-turso (node:sqlite via LibsqlClient shape)', async 
   toTurso({ client: libsqlOverNodeSqlite() }),
 )
 
+// family#170 — without `batch()` there is no atomic tx, so the store must offer
+// neither `tx()` nor `txAtomic`. The kit checks both, and the tx cases with them.
+runStoreConformanceTests('to-turso (no batch(): no tx)', async () => {
+  const { batch: _batch, ...client } = libsqlOverNodeSqlite()
+  return toTurso({ client })
+})
+
 // The no-`batch()` fallback has no transaction, so its saveAll writes first and
 // prunes second (family#147). Same outcome as the batch path, asserted directly.
 describe('to-turso saveAll without batch() (sequential fallback)', () => {
