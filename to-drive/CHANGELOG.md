@@ -1,5 +1,11 @@
 # @noy-db/to-drive
 
+## 0.10.0-pre.2
+
+- Documentation only: the README status line no longer carries a stale version number.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

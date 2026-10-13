@@ -1,5 +1,12 @@
 # Changelog — to-browser-local
 
+## 0.10.0-pre.2
+
+- **`saveAll` replaces** (noy-db/family#147): it writes first, then prunes records absent from the snapshot, so an omitted or empty collection no longer survives a restore. Underscore collections are never pruned.
+- **An absent record is at version 0** (noy-db/family#147): `put` with `expectedVersion > 0` against a missing record throws `ConflictError` instead of writing.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

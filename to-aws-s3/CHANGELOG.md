@@ -1,5 +1,13 @@
 # Changelog — to-aws-s3
 
+## 0.10.0-pre.2
+
+- **`list()` and `loadAll()` follow `NextContinuationToken`** (noy-db/family#146). Records past the first 1000 keys vanished with no error, so a `loadAll`-based backup of a large vault was silently partial.
+- **`saveAll` replaces** (noy-db/family#147): it writes first, then prunes records absent from the snapshot, so an omitted or empty collection no longer survives a restore. Underscore collections are never pruned.
+- **`loadAll` keeps `/`-bearing ids** that `list()` returns (noy-db/family#133); one key parser now serves both.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

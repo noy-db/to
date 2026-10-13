@@ -1,5 +1,14 @@
 # @noy-db/to-browser-fs
 
+## 0.10.0-pre.2
+
+- **Dot-files are never records** (noy-db/family#205). On a share without extended-attribute support, macOS writes a `._<name>` AppleDouble sidecar beside every file; `._x.json` was listed as a record, and `loadAll` threw parsing it, failing the whole vault load. `list`, `listPage` and `loadAll` now skip every dot-name, and a record id starting with a dot is refused. The README gains measured per-file latency on an SMB share as sizing guidance.
+- **`saveAll` replaces** (noy-db/family#147): it writes first, then prunes records absent from the snapshot, so an omitted or empty collection no longer survives a restore. Underscore collections are never pruned.
+- **An absent record is at version 0** (noy-db/family#147): `put` with `expectedVersion > 0` against a missing record throws `ConflictError` instead of writing.
+- On a CAS write, a read-back holding another writer's whole envelope is a lost race and throws `ConflictError`, not `FsWriteVerifyError`.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

@@ -1,5 +1,11 @@
 # @noy-db/to-cloudflare-r2
 
+## 0.10.0-pre.2
+
+- Documentation only: the README install line now names the peers `@noy-db/to-aws-s3` and `@aws-sdk/client-s3`. The `to-aws-s3` fixes in this release (paginated `list`/`loadAll`, replacing `saveAll`) reach this package through that peer.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

@@ -1,5 +1,16 @@
 # @noy-db/to-smb
 
+## 0.10.0-pre.2
+
+- **Path-escaping segments are refused** (noy-db/family#148). `vault` and `collection` must be single names; an id may carry `/` (hub's `_idx/<field>/<id>`) but no component may be empty, `.` or `..`, and no `\`. An id like `../../x` previously escaped the vault.
+- **`saveAll` replaces** (noy-db/family#147): it writes first, then prunes records absent from the snapshot, so an omitted or empty collection no longer survives a restore. Underscore collections are never pruned. There is no transaction here, so an interrupted call leaves stale extra records, never a hole. It used to delete the whole vault tree, `_keyring` included, before writing.
+- **Nested ids list** (noy-db/family#133): `list()` descends into subdirectories, so hub's `_idx/<field>/<id>` ids round-trip.
+- **An absent record is at version 0** (noy-db/family#147): `put` with `expectedVersion > 0` against a missing record throws `ConflictError` instead of writing.
+- Writes go through a per-write temp name; two writers sharing `${target}.tmp` made the second rename fail with a plain `Error`.
+- **Ids may hold a NUL** (noy-db/family#174). Each `/`-separated id component is encoded with to-file's codec (`%` → `%25`, then NUL → `%00`), and decoded on every listing; nothing else is encoded. A NUL id was refused before. Existing records whose id contains `%` are still found: reads, deletes and the CAS read fall back to the raw name, and the next write moves the record to its encoded name.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

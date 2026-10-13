@@ -1,5 +1,15 @@
 # @noy-db/to-postgres
 
+## 0.10.0-pre.2
+
+- **`saveAll` and `tx` run on one pooled connection** (noy-db/family#144). Over a pool, `BEGIN`, the `DELETE`, each upsert and `COMMIT`/`ROLLBACK` could each land on a different connection, so a failure mid-`saveAll` left the vault emptied. A plain client keeps the old path.
+- **CAS is one conditional statement** (noy-db/family#145). `casAtomic: true` was declared but the store read, compared in JS, then wrote, so two writers holding the same `expectedVersion` could both pass, and `vault.sequence()` could hand out duplicates. `expectedVersion: 0` is now create-only, `N` a single `UPDATE … WHERE v = N`, and a versioned `tx` delete is conditional too.
+- **`tableName` must be a plain identifier** (`^[A-Za-z_][A-Za-z0-9_]*$`), refused at construction (noy-db/family#148). It is interpolated into every statement and can arrive from a descriptor's `address.table`.
+- **`saveAll` no longer deletes `_keyring`** (noy-db/family#147). Its vault-wide `DELETE` now spares underscore collections, inside the same transaction as the writes, so the snapshot replaces every other collection and an empty record set empties one.
+- **Ids may hold a NUL** (noy-db/family#174). Postgres `text` refuses a 0x00 byte, so a NUL-bearing id failed at `put`. Every id is now bound encoded with to-file's codec (`%` → `%25`, then NUL → `%00`) and read back decoded; the `listPage` cursor is the stored, encoded key. Existing rows whose id contains `%` are still found: `get` also tries the raw key, `delete` removes it, and every write first renames a raw row onto its encoded key in one statement, so a versioned `put` sees its real version.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

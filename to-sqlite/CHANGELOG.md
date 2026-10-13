@@ -1,5 +1,14 @@
 # @noy-db/to-sqlite
 
+## 0.10.0-pre.2
+
+- **`tableName` must be a plain identifier** (`^[A-Za-z_][A-Za-z0-9_]*$`), refused at construction (noy-db/family#148). It is interpolated into every statement and can arrive from a descriptor's `address.table`.
+- **`saveAll` no longer deletes `_keyring`** (noy-db/family#147). Its vault-wide `DELETE` now spares underscore collections, inside the same transaction as the writes, so the snapshot replaces every other collection and an empty record set empties one.
+- **An absent record is at version 0** (noy-db/family#147): `put` with `expectedVersion > 0` against a missing record throws `ConflictError` instead of writing.
+- **NUL-bearing ids list intact** (noy-db/family#174). Hub joins partitioned sequence and period keys with `\x00`. Such an id was stored and matched intact, but `list`, `loadAll` and `listPage` read it back cut at the NUL, because the driver returns TEXT as a C string. These reads now select `hex(id)` and decode it. The stored key is unchanged, so existing data needs nothing.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

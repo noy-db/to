@@ -1,5 +1,16 @@
 # Changelog — to-nfs
 
+## 0.10.0-pre.2
+
+- **Path-escaping segments are refused** (noy-db/family#148). `vault` and `collection` must be single names; an id may carry `/` (hub's `_idx/<field>/<id>`) but no component may be empty, `.` or `..`, and no `\`. An id like `../../x` previously escaped the vault.
+- **`saveAll` replaces** (noy-db/family#147): it writes first, then prunes records absent from the snapshot, so an omitted or empty collection no longer survives a restore. Underscore collections are never pruned. There is no transaction here, so an interrupted call leaves stale extra records, never a hole.
+- **Nested ids list** (noy-db/family#133): `list()` descends into subdirectories, so hub's `_idx/<field>/<id>` ids round-trip.
+- **An absent record is at version 0** (noy-db/family#147): `put` with `expectedVersion > 0` against a missing record throws `ConflictError` instead of writing.
+- **Ids may hold a NUL** (noy-db/family#174). Each `/`-separated id component is encoded with to-file's codec (`%` → `%25`, then NUL → `%00`), and decoded on every listing; nothing else is encoded. A NUL id was refused before. Existing records whose id contains `%` are still found: reads, deletes and the CAS read fall back to the raw name, and the next write moves the record to its encoded name.
+- **An id that differs from an existing record only by case is refused on a case-folding mount** (noy-db/family#177). On APFS, NTFS and most SMB shares `abc.json` opens the existing `Abc.json`, so the write replaced that record's body while the file kept the other id's name. The store probes the mount once and refuses the colliding `put`, as `@noy-db/to-file` does from 0.10.0-pre.2. A case-sensitive mount is unaffected.
+
+Exact dev pins on `@noy-db/hub` and `@noy-db/ports` move `0.10.0-pre.0` → `0.10.0-pre.2`.
+
 ## 0.10.0-pre.0
 
 Lockstep bump to 0.10.0-pre.0; no package-level change in this release. See `@noy-db/hub` 0.10.0-pre.0 for the line's notes.

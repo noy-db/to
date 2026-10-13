@@ -15,7 +15,7 @@
  * @internal
  */
 
-import { readFile, writeFile, mkdir, readdir, unlink, stat } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, readdir, unlink, stat, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { NoydbStore, EncryptedEnvelope, VaultSnapshot } from '@noy-db/hub/to'
 import { ConflictError } from '@noy-db/hub/to'
@@ -146,6 +146,54 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
     if (legacy !== null) await unlink(legacy).catch(() => undefined)
   }
 
+  /**
+   * Whether the mount folds case (APFS and NTFS by default, most SMB shares),
+   * probed once by creating `…-Aa` and looking for `…-aa`. Same probe as
+   * to-file's.
+   */
+  let foldsCase: boolean | null = null
+  async function filesystemFoldsCase(): Promise<boolean> {
+    if (foldsCase !== null) return foldsCase
+    const probe = join(dir, '.noydb-case-probe-Aa')
+    try {
+      await mkdir(probe, { recursive: true })
+      foldsCase = await stat(join(dir, '.noydb-case-probe-aa')).then(() => true, () => false)
+    } catch {
+      foldsCase = false
+    } finally {
+      await rm(probe, { recursive: true, force: true })
+    }
+    return foldsCase
+  }
+
+  /**
+   * family#177: on a case-folding mount `abc.json` OPENS the existing
+   * `Abc.json`, so the write would replace that record's body while the file
+   * keeps the other id's name. Refused, as to-file refuses it.
+   */
+  async function assertNoCaseCollision(vault: string, collection: string, id: string): Promise<void> {
+    if (!(await filesystemFoldsCase())) return
+    const path = recordPath(vault, collection, id)
+    const leaf = path.slice(dirname(path).length + 1)
+    let entries: string[]
+    try {
+      entries = await readdir(dirname(path))
+    } catch {
+      return // no directory yet: nothing to collide with
+    }
+    const folded = leaf.toLowerCase()
+    for (const entry of entries) {
+      if (entry !== leaf && entry.toLowerCase() === folded) {
+        throw new Error(
+          `@noy-db/to-nfs: record id ${JSON.stringify(id)} case-folds onto the existing ` +
+          `${JSON.stringify(decodeId(entry.slice(0, -'.json'.length)))} on a case-insensitive filesystem, ` +
+          'so writing it would replace that record. Use ids that differ by more than case, ' +
+          'or mount the store on a case-sensitive filesystem.',
+        )
+      }
+    }
+  }
+
   function serialize(envelope: EncryptedEnvelope): string {
     return pretty ? JSON.stringify(envelope, null, 2) : JSON.stringify(envelope)
   }
@@ -180,6 +228,7 @@ export function jsonFile(options: JsonFileOptions): NoydbStore {
         }
       }
 
+      await assertNoCaseCollision(vault, collection, id)
       // The record's own parent, not the collection: an id may carry `/` (family#133).
       await ensureDir(dirname(path))
       await writeFile(path, serialize(envelope), 'utf-8')
