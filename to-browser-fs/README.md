@@ -115,6 +115,27 @@ Two layers of protection against a laptop dropping Wi-Fi mid-write:
    swap alone does not. Costs one extra read per write; pass `verifyWrites: false` to skip
    it for bulk `saveAll` over a link you trust.
 
+**Dot-files are never records.** On a share that does not take extended attributes, macOS
+writes a `._<name>` AppleDouble sidecar beside every file, so `._inv-1.json` sits next to
+`inv-1.json`. `list`, `listPage` and `loadAll` skip every name starting with a dot, and a
+record id starting with a dot is refused.
+
+### Sizing — the cost is per file, not per byte
+
+Each record is its own file, and every file costs several round trips: open, write, flush
+and close each reach the server. Measured with ~3 KB records over an SMB3 share mounted
+across a WAN (~37 ms round trip; noy-db/family#205):
+
+| | SMB share (WAN) | local APFS |
+|---|---|---|
+| write one record (median) | 1263 ms | 0.2 ms |
+| read one record (median) | 195 ms | 0.04 ms |
+| list a directory | 191 ms | 0.1 ms |
+
+At that rate a 1,000-record `saveAll` takes about 20 minutes, and `verifyWrites` adds one
+read per write. A NAS on the office LAN is far faster, but the cost still scales with the
+number of records.
+
 ## Capabilities
 
 | Capability | Value |

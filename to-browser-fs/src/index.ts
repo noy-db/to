@@ -166,6 +166,27 @@ function isDirectory(entry: DirectoryHandleLike | FileHandleLike): entry is Dire
   return entry.kind === 'directory'
 }
 
+/**
+ * The file a record lives in. ⛔ A leading dot is refused (family#205): macOS
+ * writes a `._<name>` AppleDouble sidecar beside every file on a share that
+ * does not take extended attributes, and listings skip dot-names, so a
+ * dot-led id could never be read back as a record.
+ */
+function recordFile(id: string): string {
+  if (id.startsWith('.')) {
+    throw new Error(`@noy-db/to-browser-fs: record id must not start with a dot, got ${JSON.stringify(id)}`)
+  }
+  return `${id}.json`
+}
+
+/**
+ * A directory entry that holds a record: a `.json` file whose name is not a
+ * dot-file — a macOS `._` sidecar matches `*.json` and is binary (family#205).
+ */
+function isRecordEntry(name: string, entry: DirectoryHandleLike | FileHandleLike): entry is FileHandleLike {
+  return name.endsWith('.json') && !name.startsWith('.') && !isDirectory(entry)
+}
+
 function errorName(error: unknown): string {
   return error instanceof Error ? error.name : ''
 }
@@ -242,7 +263,7 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
     id: string,
     envelope: EncryptedEnvelope,
   ): Promise<void> {
-    const filename = `${id}.json`
+    const filename = recordFile(id)
     const contents = serialize(envelope)
     const file = await collectionDir.getFileHandle(filename, { create: true })
     const writable = await file.createWritable()
@@ -260,11 +281,11 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
     }
   }
 
-  /** Ids of the `.json` records in a collection — `.crswap` orphans excluded. */
+  /** Ids of the `.json` records in a collection — `.crswap` orphans and dot-files excluded. */
   async function recordIds(collectionDir: DirectoryHandleLike): Promise<string[]> {
     const ids: string[] = []
     for await (const [name, entry] of collectionDir.entries()) {
-      if (name.endsWith('.json') && !isDirectory(entry)) ids.push(name.slice(0, -5))
+      if (isRecordEntry(name, entry)) ids.push(name.slice(0, -5))
     }
     return ids.sort()
   }
@@ -293,9 +314,10 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
     },
 
     async get(vault, collection, id) {
+      const filename = recordFile(id)
       try {
         const collectionDir = await dir([vault, collection], false)
-        return await readFile(await collectionDir.getFileHandle(`${id}.json`))
+        return await readFile(await collectionDir.getFileHandle(filename))
       } catch (error) {
         if (errorName(error) === 'NotFoundError' && (await reachable())) return null
         return fail(error, `read ${vault}/${collection}/${id}`)
@@ -303,6 +325,7 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
     },
 
     async put(vault, collection, id, envelope, expectedVersion) {
+      const filename = recordFile(id)
       try {
         const collectionDir = await dir([vault, collection], true)
 
@@ -311,7 +334,7 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
           // so this carries a TOCTOU window — see `capabilities.casAtomic`.
           let existing: EncryptedEnvelope | null = null
           try {
-            existing = await readFile(await collectionDir.getFileHandle(`${id}.json`))
+            existing = await readFile(await collectionDir.getFileHandle(filename))
           } catch (error) {
             if (errorName(error) !== 'NotFoundError') throw error
           }
@@ -330,9 +353,10 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
     },
 
     async delete(vault, collection, id) {
+      const filename = recordFile(id)
       try {
         const collectionDir = await dir([vault, collection], false)
-        await collectionDir.removeEntry(`${id}.json`)
+        await collectionDir.removeEntry(filename)
       } catch (error) {
         if (errorName(error) === 'NotFoundError' && (await reachable())) return
         return fail(error, `delete ${vault}/${collection}/${id}`)
@@ -363,7 +387,7 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
           if (collectionName.startsWith('_') || !isDirectory(entry)) continue
           const records: Record<string, EncryptedEnvelope> = {}
           for await (const [fileName, fileEntry] of entry.entries()) {
-            if (!fileName.endsWith('.json') || isDirectory(fileEntry)) continue
+            if (!isRecordEntry(fileName, fileEntry)) continue
             records[fileName.slice(0, -5)] = await readFile(fileEntry)
           }
           snapshot[collectionName] = records
@@ -375,6 +399,8 @@ export function toBrowserFs(options: BrowserFsOptions): BrowserFsStore {
     },
 
     async saveAll(vault, data) {
+      // Refuse a bad id before writing anything, not halfway through.
+      for (const records of Object.values(data)) for (const id of Object.keys(records)) recordFile(id)
       try {
         for (const [collectionName, records] of Object.entries(data)) {
           const collectionDir = await dir([vault, collectionName], true)
